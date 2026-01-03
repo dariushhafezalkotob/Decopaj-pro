@@ -22,14 +22,16 @@ export const ShotCard: React.FC<ShotCardProps> = ({ shot, onRetry, onEdit }) => 
     setEditPrompt('');
   };
 
+  const vb = shot.visual_breakdown;
+
   return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden flex flex-col shadow-2xl transition-all hover:border-zinc-700 print:bg-white print:border-zinc-200 print:shadow-none print:rounded-none print:border-b-2 print:pb-8">
+    <div className="print-break-inside-avoid bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden flex flex-col shadow-2xl transition-all hover:border-zinc-700 print:bg-white print:border-zinc-300 print:shadow-none print:rounded-none print:border-b-2 print:pb-12 print:mb-8">
       <div className="aspect-video bg-black relative group print:bg-zinc-100 print:border print:border-zinc-300">
         {(shot.loading || shot.editing) ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-zinc-900/80 backdrop-blur-sm z-20 animate-in fade-in">
             <div className="w-12 h-12 border-4 border-amber-500/20 border-t-amber-500 rounded-full animate-spin mb-4"></div>
             <p className="text-zinc-300 text-[10px] font-black uppercase tracking-[0.2em] animate-pulse">
-              {shot.editing ? 'VFX RE-RENDERING...' : 'PROCESSING SPEC...'}
+              {shot.editing ? 'RE-BUILDING METADATA...' : 'PROCESSING SPEC...'}
             </p>
           </div>
         ) : shot.image_url ? (
@@ -49,7 +51,7 @@ export const ShotCard: React.FC<ShotCardProps> = ({ shot, onRetry, onEdit }) => 
           </div>
         )}
         
-        <div className="absolute top-4 left-4 bg-zinc-950/80 backdrop-blur-md px-3 py-1 rounded-full border border-white/10 text-[10px] font-black text-amber-500 uppercase tracking-widest print:bg-zinc-950 print:text-white">
+        <div className="absolute top-4 left-4 bg-zinc-950/80 backdrop-blur-md px-3 py-1 rounded-full border border-white/10 text-[10px] font-black text-amber-500 uppercase tracking-widest print:bg-zinc-900 print:text-white print:border-zinc-800">
           #{shot.shot_id}
         </div>
 
@@ -74,7 +76,7 @@ export const ShotCard: React.FC<ShotCardProps> = ({ shot, onRetry, onEdit }) => 
       <div className="p-5 flex-1 flex flex-col print:p-0 print:pt-6">
         <div className="mb-4">
           <div className="flex items-center justify-between mb-1">
-            <h3 className="text-lg font-bold text-white print:text-zinc-950 print:text-2xl">{shot.plan_type}</h3>
+            <h3 className="text-lg font-bold text-white print:text-zinc-900 print:text-3xl">{shot.plan_type}</h3>
             {shot.image_url && !shot.loading && !shot.editing && (
               <button 
                 onClick={() => setIsEditingMode(!isEditingMode)}
@@ -84,7 +86,7 @@ export const ShotCard: React.FC<ShotCardProps> = ({ shot, onRetry, onEdit }) => 
               </button>
             )}
           </div>
-          <p className="text-amber-500/90 text-[10px] mono uppercase tracking-wider font-bold print:text-zinc-500">
+          <p className="text-amber-500/90 text-[10px] mono uppercase tracking-wider font-bold print:text-zinc-600 print:text-sm">
             {shot.camera_specs}
           </p>
         </div>
@@ -113,64 +115,72 @@ export const ShotCard: React.FC<ShotCardProps> = ({ shot, onRetry, onEdit }) => 
         
         <div className="space-y-4">
           <div>
-            <span className="text-[9px] uppercase font-black text-zinc-600 block mb-1 tracking-widest print:text-zinc-400 print:text-[8px]">Script Segment</span>
-            <p className="text-sm text-zinc-300 italic leading-relaxed print:text-zinc-800 print:not-italic print:text-base">
+            <span className="text-[9px] uppercase font-black text-zinc-600 block mb-1 tracking-widest print:text-zinc-500 print:text-[10px]">Script Segment</span>
+            <p className="text-sm text-zinc-300 italic leading-relaxed print:text-zinc-900 print:not-italic print:text-lg">
               "{shot.action_segment}"
             </p>
           </div>
 
           <div className={`${showMeta ? 'block' : 'hidden'} print:block pt-4 border-t border-zinc-800 print:border-zinc-200`}>
-            <span className="text-[9px] uppercase font-black text-zinc-600 block mb-2 tracking-widest print:text-zinc-400">Technical Data</span>
-            <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-[10px] mono mb-4">
+            <span className="text-[9px] uppercase font-black text-zinc-600 block mb-2 tracking-widest print:text-zinc-500 print:text-[10px]">Technical Data</span>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-[10px] mono mb-4 print:text-sm">
               <div className="flex justify-between border-b border-zinc-800/50 pb-1 print:border-zinc-100">
                 <span className="text-zinc-500">Lens</span>
-                <span className="text-zinc-300 font-bold print:text-zinc-900">{shot.visual_breakdown.camera.lens.focal_length_mm}mm</span>
+                <span className="text-zinc-300 font-bold print:text-zinc-950">
+                  {vb?.camera?.lens?.focal_length_mm || '---'}mm
+                </span>
               </div>
               <div className="flex justify-between border-b border-zinc-800/50 pb-1 print:border-zinc-100">
                 <span className="text-zinc-500">Aperture</span>
-                <span className="text-zinc-300 font-bold print:text-zinc-900">{shot.visual_breakdown.camera.settings.aperture}</span>
+                <span className="text-zinc-300 font-bold print:text-zinc-950">
+                  {vb?.camera?.settings?.aperture || '---'}
+                </span>
               </div>
               <div className="flex justify-between border-b border-zinc-800/50 pb-1 print:border-zinc-100">
                 <span className="text-zinc-500">Mood</span>
-                <span className="text-zinc-300 font-bold print:text-zinc-900 truncate max-w-[80px]">{shot.visual_breakdown.scene.mood}</span>
+                <span className="text-zinc-300 font-bold print:text-zinc-950 truncate max-w-[80px] print:max-w-none">
+                  {vb?.scene?.mood || '---'}
+                </span>
               </div>
               <div className="flex justify-between border-b border-zinc-800/50 pb-1 print:border-zinc-100">
                 <span className="text-zinc-500">Lighting</span>
-                <span className="text-zinc-300 font-bold print:text-zinc-900 truncate max-w-[80px]">{shot.visual_breakdown.lighting.key}</span>
+                <span className="text-zinc-300 font-bold print:text-zinc-950 truncate max-w-[80px] print:max-w-none">
+                  {vb?.lighting?.key || '---'}
+                </span>
               </div>
             </div>
 
-            <span className="text-[9px] uppercase font-black text-zinc-600 block mb-2 tracking-widest print:text-zinc-400">Character Mapping</span>
+            <span className="text-[9px] uppercase font-black text-zinc-600 block mb-2 tracking-widest print:text-zinc-500 print:text-[10px]">Character Mapping</span>
             <div className="space-y-2">
-              {shot.visual_breakdown.characters.map((char, i) => (
-                <div key={i} className="text-[10px] bg-zinc-950/50 p-2 rounded-lg border border-zinc-800/50 print:bg-white print:border-zinc-100">
+              {vb?.characters?.map((char, i) => (
+                <div key={i} className="text-[10px] bg-zinc-950/50 p-2 rounded-lg border border-zinc-800/50 print:bg-zinc-50 print:border-zinc-200 print:text-sm">
                   <div className="flex justify-between mb-1">
-                    <span className="font-bold text-amber-500 uppercase">{char.name}</span>
-                    <span className="text-zinc-400 italic bg-white/5 px-1 rounded">{char.reference_image}</span>
+                    <span className="font-bold text-amber-500 uppercase print:text-zinc-950">{char.name}</span>
+                    <span className="text-zinc-400 italic bg-white/5 px-1 rounded print:bg-zinc-200 print:text-zinc-600">{char.reference_image}</span>
                   </div>
                   <p className="text-zinc-400 leading-tight print:text-zinc-700">
-                    <span className="text-zinc-600">Action:</span> {char.actions}
+                    <span className="text-zinc-600 font-bold">Action:</span> {char.actions}
                   </p>
-                  <p className="text-[9px] text-zinc-500 mt-1 italic">
+                  <p className="text-[9px] text-zinc-500 mt-1 italic print:text-xs">
                     {char.lighting_effect}
                   </p>
                 </div>
-              ))}
+              )) || <p className="text-[10px] text-zinc-600 italic">No characters detected</p>}
             </div>
           </div>
 
-          <div className={`${showJson ? 'block' : 'hidden'} print:block pt-4 border-t border-zinc-800 print:border-zinc-200`}>
-             <span className="text-[9px] uppercase font-black text-zinc-600 block mb-2 tracking-widest print:text-zinc-400">Decopaj JSON</span>
-             <div className="bg-zinc-950 p-3 rounded-lg border border-zinc-800 overflow-x-auto print:bg-zinc-50 print:border-zinc-100">
+          <div className={`${showJson ? 'block' : 'hidden'} print:hidden pt-4 border-t border-zinc-800`}>
+             <span className="text-[9px] uppercase font-black text-zinc-600 block mb-2 tracking-widest">Decopaj JSON</span>
+             <div className="bg-zinc-950 p-3 rounded-lg border border-zinc-800 overflow-x-auto">
                <pre className="text-[9px] text-amber-500/80 mono leading-tight">
-                 {JSON.stringify(shot.visual_breakdown, null, 2)}
+                 {JSON.stringify(vb, null, 2)}
                </pre>
              </div>
           </div>
           
           <div className="print:hidden">
             <div className="flex flex-wrap gap-1 mt-2">
-              {shot.relevant_entities.map((ent, i) => (
+              {shot.relevant_entities?.map((ent, i) => (
                 <span key={i} className="text-[8px] bg-zinc-800 text-zinc-500 px-2 py-0.5 rounded uppercase font-bold tracking-tighter">
                   {ent}
                 </span>

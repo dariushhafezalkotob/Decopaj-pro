@@ -7,7 +7,6 @@ import { ShotCard } from './components/ShotCard';
 const STORAGE_KEY = 'FILM_STUDIO_DATA_V1';
 const NAV_STORAGE_KEY = 'FILM_STUDIO_NAV_V1';
 
-// Fix: Defining props interface for AssetCard to resolve TypeScript JSX attribute errors
 interface AssetCardProps {
   entity: Entity;
   isGlobal: boolean;
@@ -15,7 +14,6 @@ interface AssetCardProps {
   onUpload: (file: File) => void;
 }
 
-// Fix: Using React.FC with the defined interface to properly handle component props including 'key'
 const AssetCard: React.FC<AssetCardProps> = ({ 
   entity, 
   isGlobal, 
@@ -61,8 +59,8 @@ const AssetCard: React.FC<AssetCardProps> = ({
 
 const App: React.FC = () => {
   const storyboardRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
-  // Hydrate projects from localStorage
   const getInitialProjects = (): Project[] => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
@@ -73,7 +71,6 @@ const App: React.FC = () => {
     }
   };
 
-  // Hydrate navigation from localStorage
   const getInitialNav = () => {
     try {
       const saved = localStorage.getItem(NAV_STORAGE_KEY);
@@ -94,6 +91,10 @@ const App: React.FC = () => {
     newProjectName: string;
     isCreatingSequence: boolean;
     newSequenceTitle: string;
+    isSyncing: boolean;
+    hasFileSystemAccess: boolean;
+    isIframe: boolean;
+    showDriveGuide: boolean;
   }>({
     projects: getInitialProjects(),
     activeProjectId: initialNav.activeProjectId,
@@ -108,16 +109,20 @@ const App: React.FC = () => {
     isCreatingProject: false,
     newProjectName: '',
     isCreatingSequence: false,
-    newSequenceTitle: ''
+    newSequenceTitle: '',
+    isSyncing: false,
+    hasFileSystemAccess: 'showSaveFilePicker' in window,
+    isIframe: window.self !== window.top,
+    showDriveGuide: false
   });
 
-  // Auto-save projects
+  // Auto-save projects to localStorage
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state.projects));
     } catch (e) {
       if (e instanceof DOMException && e.name === 'QuotaExceededError') {
-        setState(prev => ({ ...prev, error: "Storage Full: Try removing some images or clearing older projects." }));
+        setState(prev => ({ ...prev, error: "Browser storage full. Export your work to a drive to continue." }));
       }
     }
   }, [state.projects]);
@@ -151,8 +156,113 @@ const App: React.FC = () => {
     }
   };
 
+  const triggerDownload = (data: any, fileName: string) => {
+    const json = JSON.stringify(data, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    
+    if (state.isIframe) {
+      setState(prev => ({ 
+        ...prev, 
+        error: "DRIVE SELECTOR BLOCKED: Since you are in a preview window, files go to Downloads. TIP: Enable 'Ask where to save' in Chrome Settings to choose a drive." 
+      }));
+    }
+  };
+
+  const handleSaveWorkspaceToDrive = async () => {
+    if (!state.hasFileSystemAccess) {
+      triggerDownload(state.projects, 'frameline_workspace.json');
+      return;
+    }
+
+    try {
+      setState(prev => ({ ...prev, isSyncing: true }));
+      const opts = {
+        suggestedName: `frameline_workspace_${new Date().toISOString().slice(0, 10)}.json`,
+        types: [{
+          description: 'Frameline Production Backup',
+          accept: { 'application/json': ['.json'] },
+        }],
+      };
+      
+      const handle = await (window as any).showSaveFilePicker(opts);
+      const writable = await handle.createWritable();
+      await writable.write(JSON.stringify(state.projects, null, 2));
+      await writable.close();
+      setState(prev => ({ ...prev, isSyncing: false, error: null }));
+    } catch (err: any) {
+      setState(prev => ({ ...prev, isSyncing: false }));
+      if (err.name === 'SecurityError' || err.message?.includes('Cross origin')) {
+        triggerDownload(state.projects, 'frameline_workspace.json');
+      } else if (err.name !== 'AbortError') {
+        setState(prev => ({ ...prev, error: `Drive Access Error: ${err.message}` }));
+      }
+    }
+  };
+
+  const handleSaveProjectToDrive = async (project: Project) => {
+    if (!state.hasFileSystemAccess) {
+      triggerDownload(project, `${project.name.replace(/\s+/g, '_')}_proj.json`);
+      return;
+    }
+
+    try {
+      const opts = {
+        suggestedName: `${project.name.replace(/\s+/g, '_')}_production.json`,
+        types: [{
+          description: 'Frameline Project Data',
+          accept: { 'application/json': ['.json'] },
+        }],
+      };
+      const handle = await (window as any).showSaveFilePicker(opts);
+      const writable = await handle.createWritable();
+      await writable.write(JSON.stringify(project, null, 2));
+      await writable.close();
+    } catch (err: any) {
+      if (err.name === 'SecurityError' || err.message?.includes('Cross origin')) {
+        triggerDownload(project, `${project.name.replace(/\s+/g, '_')}_proj.json`);
+      } else if (err.name !== 'AbortError') {
+        setState(prev => ({ ...prev, error: `Drive Access Error: ${err.message}` }));
+      }
+    }
+  };
+
+  const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const imported = JSON.parse(event.target?.result as string);
+        if (Array.isArray(imported)) {
+          if (confirm("Importing a full workspace. Merge into your session?")) {
+            setState(prev => ({ ...prev, projects: [...prev.projects, ...imported] }));
+          }
+        } else if (imported.id && imported.sequences) {
+          if (confirm(`Importing project: ${imported.name}. Add to workspace?`)) {
+            setState(prev => ({ ...prev, projects: [...prev.projects, imported] }));
+          }
+        } else {
+          throw new Error("Unknown file format.");
+        }
+      } catch (err) {
+        setState(prev => ({ ...prev, error: "Invalid Frameline file. Ensure it's a valid JSON backup." }));
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  };
+
   const handleClearAllData = () => {
-    if (confirm("Are you sure you want to delete all projects and data? This cannot be undone.")) {
+    if (confirm("Delete all data? This cannot be undone. Export to your drive first!")) {
       localStorage.removeItem(STORAGE_KEY);
       localStorage.removeItem(NAV_STORAGE_KEY);
       window.location.reload();
@@ -321,7 +431,8 @@ const App: React.FC = () => {
     }));
 
     try {
-      const newImageUrl = await editShotImage(
+      // service returns { image_url, visual_breakdown }
+      const updateData = await editShotImage(
         activeSequence.shots[shotIdx].image_url!,
         editPrompt,
         activeSequence.shots[shotIdx]
@@ -333,7 +444,12 @@ const App: React.FC = () => {
           ...p,
           sequences: p.sequences.map(s => s.id === prev.activeSequenceId ? {
             ...s,
-            shots: s.shots.map(sh => sh.shot_id === shotId ? { ...sh, image_url: newImageUrl, editing: false } : sh)
+            shots: s.shots.map(sh => sh.shot_id === shotId ? { 
+              ...sh, 
+              image_url: updateData.image_url, 
+              visual_breakdown: updateData.visual_breakdown,
+              editing: false 
+            } : sh)
           } : s)
         } : p)
       }));
@@ -426,7 +542,7 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen pb-24 text-zinc-200">
-      <nav className="sticky top-0 z-50 bg-zinc-950/90 backdrop-blur-xl border-b border-zinc-800 px-6 h-16 flex items-center justify-between">
+      <nav className="sticky top-0 z-50 bg-zinc-950/90 backdrop-blur-xl border-b border-zinc-800 px-6 h-16 flex items-center justify-between print:hidden">
         <div className="flex items-center space-x-4 cursor-pointer" onClick={() => setState(p => ({ ...p, currentStep: 'dashboard', activeProjectId: null, activeSequenceId: null }))}>
           <div className="w-8 h-8 bg-amber-500 rounded flex items-center justify-center text-zinc-950 font-black shadow-lg shadow-amber-500/20">F</div>
           <h1 className="font-bold uppercase tracking-tighter text-sm">Frameline Studio</h1>
@@ -434,6 +550,15 @@ const App: React.FC = () => {
           {activeProject && <span className="text-xs font-bold text-amber-500">{activeProject.name}</span>}
         </div>
         <div className="flex items-center space-x-4">
+          <div 
+            onClick={() => setState(p => ({ ...p, showDriveGuide: !p.showDriveGuide }))}
+            className="group relative flex items-center space-x-2 bg-zinc-900 px-3 py-1.5 rounded-full border border-zinc-800 shadow-inner cursor-help transition-colors hover:border-zinc-600"
+          >
+             <div className={`w-1.5 h-1.5 rounded-full animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.8)] ${state.isIframe ? 'bg-amber-500' : 'bg-emerald-500'}`}></div>
+             <span className="text-[9px] font-black uppercase tracking-widest text-zinc-400">
+               {state.isIframe ? 'RESTRICTED DRIVE' : 'DRIVE LINK READY'}
+             </span>
+          </div>
           <button 
             onClick={handleOpenKeySelector} 
             className={`text-[10px] px-4 py-1.5 rounded-full border uppercase font-black tracking-widest transition-colors ${state.hasApiKey ? 'border-emerald-500/50 text-emerald-400 bg-emerald-500/5' : 'border-amber-500/50 text-amber-400 bg-amber-500/5'}`}
@@ -443,25 +568,80 @@ const App: React.FC = () => {
         </div>
       </nav>
 
-      <main className="max-w-7xl mx-auto px-6 mt-12">
+      {state.showDriveGuide && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/60 backdrop-blur-md animate-in fade-in">
+          <div className="bg-zinc-900 border border-zinc-800 w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
+            <div className="p-8 border-b border-zinc-800">
+              <h3 className="text-2xl font-bold flex items-center space-x-3">
+                <svg className="w-6 h-6 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>
+                <span>Choose Your Save Drive</span>
+              </h3>
+            </div>
+            <div className="p-8 space-y-6">
+              <div className="bg-zinc-950 p-4 rounded-xl border border-zinc-800">
+                <h4 className="text-xs font-black uppercase text-amber-500 mb-2 tracking-widest">Why can't I pick a drive?</h4>
+                <p className="text-sm text-zinc-400 leading-relaxed">
+                  You are currently in a <span className="text-zinc-200 font-bold">Preview Environment (Iframe)</span>. Browsers block the "Save As" drive picker inside frames for security.
+                </p>
+              </div>
+              <div className="space-y-4">
+                <h4 className="text-xs font-black uppercase tracking-widest">Option 1: Open in Full Tab</h4>
+                <p className="text-sm text-zinc-500">Copy the URL of this app and open it in a standard browser tab. The "Choose Drive" window will then work natively.</p>
+                
+                <h4 className="text-xs font-black uppercase tracking-widest mt-6">Option 2: Browser Settings (Recommended)</h4>
+                <p className="text-sm text-zinc-500 leading-relaxed">
+                  Go to <span className="text-zinc-200">Chrome Settings → Downloads</span> and turn ON <span className="text-amber-500 font-bold">"Ask where to save each file before downloading"</span>.
+                  <br/><br/>
+                  Once enabled, you can pick any drive (C:, D:, etc.) every time you click "Export".
+                </p>
+              </div>
+            </div>
+            <div className="p-8 bg-zinc-950/50 flex justify-end">
+              <button onClick={() => setState(p => ({ ...p, showDriveGuide: false }))} className="bg-zinc-100 text-zinc-950 px-8 py-3 rounded-xl font-bold hover:bg-white transition-all shadow-lg">Got it</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <main className="max-w-7xl mx-auto px-6 mt-12 print:mt-0 print:px-0">
         {state.currentStep === 'dashboard' && (
-          <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4">
+          <div className="space-y-12 animate-in fade-in slide-in-from-bottom-4">
             <div className="flex justify-between items-end">
               <div>
-                <h2 className="text-4xl font-bold mb-2">My Projects</h2>
-                <p className="text-zinc-500">Persistent workspace. Everything is saved automatically.</p>
+                <h2 className="text-4xl font-bold mb-2">Workspace Dashboard</h2>
+                <p className="text-zinc-500">Break down scripts and manage cinematic assets across your drives.</p>
               </div>
               <div className="flex items-center space-x-4">
+                <input 
+                  type="file" 
+                  ref={fileInputRef} 
+                  className="hidden" 
+                  accept=".json" 
+                  onChange={handleImportFile} 
+                />
                 <button 
-                  onClick={handleClearAllData}
-                  className="text-[10px] font-black uppercase tracking-widest text-zinc-700 hover:text-red-500 transition-colors"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="text-[10px] font-black uppercase tracking-widest text-zinc-400 border border-zinc-800 px-4 py-2.5 rounded-xl hover:bg-zinc-900 transition-colors flex items-center space-x-2"
                 >
-                  Reset Workspace
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1M16 8l-4-4-4 4M12 4v12"/></svg>
+                  <span>Open Project</span>
+                </button>
+                <button 
+                  onClick={handleSaveWorkspaceToDrive}
+                  disabled={state.isSyncing}
+                  className="text-[10px] font-black uppercase tracking-widest text-amber-500 border border-amber-500/30 px-4 py-2.5 rounded-xl hover:bg-amber-500/5 transition-colors flex items-center space-x-2 shadow-lg shadow-amber-500/5"
+                >
+                  {state.isSyncing ? (
+                    <div className="w-3 h-3 border border-amber-500 border-t-transparent rounded-full animate-spin"></div>
+                  ) : (
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>
+                  )}
+                  <span>Export to Drive</span>
                 </button>
                 {!state.isCreatingProject ? (
                   <button 
                     onClick={handleStartCreateProject} 
-                    className="bg-amber-500 text-zinc-950 px-6 py-3 rounded-xl font-bold hover:bg-amber-400 transition-all shadow-xl shadow-amber-500/20"
+                    className="bg-amber-500 text-zinc-950 px-6 py-3 rounded-xl font-bold hover:bg-amber-400 transition-all shadow-xl shadow-amber-500/20 ml-4"
                   >
                     + New Project
                   </button>
@@ -481,6 +661,7 @@ const App: React.FC = () => {
                 )}
               </div>
             </div>
+
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {state.projects.length === 0 && !state.isCreatingProject && (
                 <div className="col-span-full py-24 border-2 border-dashed border-zinc-800 rounded-3xl flex flex-col items-center justify-center text-zinc-700">
@@ -501,14 +682,41 @@ const App: React.FC = () => {
                     <span className="w-1 h-1 bg-zinc-800 rounded-full"></span>
                     <span>{p.globalCast.length} Cast</span>
                   </div>
-                  <button 
-                    onClick={(e) => { e.stopPropagation(); if(confirm("Delete this project?")) setState(prev => ({ ...prev, projects: prev.projects.filter(proj => proj.id !== p.id) })); }}
-                    className="absolute bottom-4 right-8 opacity-0 group-hover:opacity-100 text-zinc-700 hover:text-red-500 transition-all text-[8px] font-black uppercase"
-                  >
-                    Delete Project
-                  </button>
+                  <div className="absolute bottom-4 right-8 flex items-center space-x-4 opacity-0 group-hover:opacity-100 transition-all">
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); handleSaveProjectToDrive(p); }}
+                      className="text-zinc-600 hover:text-amber-500 transition-all text-[8px] font-black uppercase tracking-widest flex items-center space-x-1"
+                    >
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>
+                      <span>Choose Drive</span>
+                    </button>
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); if(confirm("Delete this project?")) setState(prev => ({ ...prev, projects: prev.projects.filter(proj => proj.id !== p.id) })); }}
+                      className="text-zinc-700 hover:text-red-500 transition-all text-[8px] font-black uppercase tracking-widest"
+                    >
+                      Delete
+                    </button>
+                  </div>
                 </div>
               ))}
+            </div>
+
+            <div className="border-t border-zinc-900 pt-8 flex items-center justify-between">
+               <div className="flex items-center space-x-4">
+                  <div className="w-10 h-10 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-500">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold uppercase tracking-widest">Production Storage Tip</h4>
+                    <p className="text-[10px] text-zinc-600 mt-1">To pick a specific drive, enable "Ask where to save each file before downloading" in your browser settings or click the Drive Status icon above.</p>
+                  </div>
+               </div>
+               <button 
+                  onClick={handleClearAllData}
+                  className="text-[10px] font-black uppercase tracking-widest text-zinc-800 hover:text-red-900 transition-colors"
+                >
+                  Clear Data
+                </button>
             </div>
           </div>
         )}
@@ -558,6 +766,13 @@ const App: React.FC = () => {
               </div>
               <div className="flex items-center space-x-4">
                 <button 
+                  onClick={() => activeProject && handleSaveProjectToDrive(activeProject)} 
+                  className="bg-zinc-900 border border-zinc-800 text-zinc-300 px-6 py-3 rounded-xl font-bold hover:bg-zinc-800 transition-all flex items-center space-x-2"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>
+                  <span>Drive Backup</span>
+                </button>
+                <button 
                   onClick={() => setState(p => ({ ...p, currentStep: 'casting' }))} 
                   className="bg-zinc-900 border border-zinc-800 text-zinc-300 px-6 py-3 rounded-xl font-bold hover:bg-zinc-800 transition-all"
                 >
@@ -575,7 +790,7 @@ const App: React.FC = () => {
                     <input 
                       autoFocus
                       className="bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2 text-sm outline-none focus:border-amber-500 transition-colors w-64"
-                      placeholder="Sequence Title (e.g. INT. LAB - NIGHT)"
+                      placeholder="Sequence Title..."
                       value={state.newSequenceTitle}
                       onChange={(e) => setState(p => ({ ...p, newSequenceTitle: e.target.value }))}
                       onKeyDown={(e) => e.key === 'Enter' && confirmCreateSequence()}
@@ -634,17 +849,17 @@ const App: React.FC = () => {
                 value={activeSequence?.script}
                 onChange={(e) => setState(p => ({ ...p, projects: p.projects.map(proj => proj.id === p.activeProjectId ? { ...proj, sequences: proj.sequences.map(s => s.id === p.activeSequenceId ? { ...s, script: e.target.value } : s) } : proj) }))}
                 className="w-full h-96 bg-zinc-950 border border-zinc-800 rounded-2xl p-6 text-sm mono focus:border-amber-500 outline-none resize-none leading-relaxed text-zinc-400"
-                placeholder="INT. STUDIO - DAY&#10;&#10;The light catches the lens as the camera tracks forward..."
+                placeholder="Paste script here..."
               />
               <div className="flex space-x-4 mt-8">
-                <button onClick={() => setState(p => ({ ...p, currentStep: 'project-home' }))} className="px-8 py-4 bg-zinc-800 text-zinc-400 font-bold rounded-2xl hover:bg-zinc-700 transition-all">Back to Project</button>
+                <button onClick={() => setState(p => ({ ...p, currentStep: 'project-home' }))} className="px-8 py-4 bg-zinc-800 text-zinc-400 font-bold rounded-2xl hover:bg-zinc-700 transition-all">Back</button>
                 <button 
                   onClick={handleStartIdentification} 
                   disabled={state.isIdentifying || !activeSequence?.script.trim()} 
                   className={`flex-1 px-8 py-4 rounded-2xl font-black uppercase tracking-widest text-sm flex items-center justify-center space-x-3 transition-all ${state.isIdentifying || !activeSequence?.script.trim() ? 'bg-zinc-800 text-zinc-600' : 'bg-amber-500 text-zinc-950 hover:bg-amber-400 shadow-xl shadow-amber-500/20'}`}
                 >
                   {state.isIdentifying && <div className="w-4 h-4 border-2 border-zinc-950/30 border-t-zinc-950 rounded-full animate-spin"></div>}
-                  <span>{state.isIdentifying ? 'Analyzing Narrative...' : 'Analyze Scene Assets'}</span>
+                  <span>{state.isIdentifying ? 'Scanning...' : 'Analyze Sequence Assets'}</span>
                 </button>
               </div>
             </div>
@@ -655,7 +870,7 @@ const App: React.FC = () => {
           <div className="space-y-12 animate-in fade-in">
             <div className="border-b border-zinc-800 pb-8">
               <h2 className="text-3xl font-black uppercase tracking-tighter mb-2">Sequence Scouting</h2>
-              <p className="text-zinc-500">Provide visual references for unique locations and props found in this specific sequence.</p>
+              <p className="text-zinc-500">Provide visual references for specific locations and props in this scene.</p>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-5 gap-6">
               {activeSequence?.assets.map(a => (
@@ -676,7 +891,7 @@ const App: React.FC = () => {
                  className={`flex-1 px-10 py-4 rounded-2xl font-black uppercase tracking-widest text-sm flex items-center justify-center space-x-4 transition-all ${state.isAnalyzing ? 'bg-zinc-800 text-zinc-600' : 'bg-amber-500 text-zinc-950 hover:bg-amber-400 shadow-xl shadow-amber-500/20'}`}
                >
                  {state.isAnalyzing && <div className="w-5 h-5 border-2 border-zinc-950/30 border-t-zinc-950 rounded-full animate-spin"></div>}
-                 <span>{state.isAnalyzing ? 'Executing Full Decopaj...' : 'Finalize Technical Board'}</span>
+                 <span>{state.isAnalyzing ? 'Decopaj in progress...' : 'Finalize Shot Board'}</span>
                </button>
             </div>
           </div>
@@ -684,25 +899,25 @@ const App: React.FC = () => {
 
         {state.currentStep === 'sequence-board' && (activeProject && activeSequence) && (
           <div className="space-y-12 animate-in fade-in" ref={storyboardRef}>
-            <div className="flex justify-between items-end border-b border-zinc-800 pb-8 print:hidden">
+            <div className="flex justify-between items-end border-b border-zinc-800 pb-8 print:border-zinc-300 print:mb-12">
               <div>
-                <h2 className="text-3xl font-black uppercase tracking-tighter mb-2">{activeSequence.title}</h2>
-                <div className="flex items-center space-x-4 text-[10px] font-black uppercase tracking-widest text-zinc-600">
+                <h2 className="text-3xl font-black uppercase tracking-tighter mb-2 print:text-5xl print:text-zinc-900">{activeSequence.title}</h2>
+                <div className="flex items-center space-x-4 text-[10px] font-black uppercase tracking-widest text-zinc-600 print:text-sm print:text-zinc-500">
                   <span>Production Storyboard</span>
-                  <span className="w-1 h-1 bg-zinc-800 rounded-full"></span>
+                  <span className="w-1 h-1 bg-zinc-800 rounded-full print:bg-zinc-300"></span>
                   <span>{activeSequence.shots.length} Technical Shots</span>
                 </div>
               </div>
-              <div className="flex items-center space-x-4">
+              <div className="flex items-center space-x-4 print:hidden">
                 <button 
                   onClick={() => setState(p => ({ ...p, currentStep: 'project-home', activeSequenceId: null }))} 
                   className="bg-zinc-900 border border-zinc-800 text-zinc-300 px-6 py-3 rounded-xl font-bold hover:bg-zinc-800 transition-all text-xs"
                 >
-                  Close Board
+                  Close
                 </button>
                 <button 
                   onClick={() => window.print()} 
-                  className="bg-white text-zinc-950 px-6 py-3 rounded-xl font-bold hover:bg-zinc-200 transition-all text-xs flex items-center space-x-2"
+                  className="bg-white text-zinc-950 px-6 py-3 rounded-xl font-bold hover:bg-zinc-200 transition-all text-xs flex items-center space-x-2 shadow-lg shadow-white/5"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
                   <span>Export PDF</span>
@@ -710,7 +925,7 @@ const App: React.FC = () => {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 pb-32">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 pb-32 print:grid-cols-1 print:gap-12 print:pb-0">
               {activeSequence.shots.map(shot => (
                 <ShotCard 
                   key={shot.shot_id} 
@@ -725,10 +940,16 @@ const App: React.FC = () => {
       </main>
 
       {state.error && (
-        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 bg-red-500/90 backdrop-blur-md text-white px-6 py-3 rounded-2xl shadow-2xl flex items-center space-x-4 animate-in slide-in-from-bottom-4 z-[9999]">
-          <span className="text-xs font-bold uppercase tracking-widest">{state.error}</span>
-          <button onClick={() => setState(p => ({ ...p, error: null }))} className="bg-white/20 hover:bg-white/30 rounded-full p-1 transition-colors">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 bg-zinc-900 border border-zinc-800 text-white px-6 py-4 rounded-2xl shadow-2xl flex items-center space-x-6 animate-in slide-in-from-bottom-6 z-[9999] print:hidden max-w-md">
+          <div className="bg-amber-500/20 p-2 rounded-full text-amber-500">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          </div>
+          <div className="flex-1">
+            <h4 className="text-[10px] font-black uppercase tracking-widest opacity-50">System Info</h4>
+            <p className="text-[11px] font-bold leading-tight mt-0.5">{state.error}</p>
+          </div>
+          <button onClick={() => setState(p => ({ ...p, error: null }))} className="bg-zinc-800 hover:bg-zinc-700 rounded-xl px-3 py-1.5 transition-colors text-[10px] font-black uppercase">
+            OK
           </button>
         </div>
       )}

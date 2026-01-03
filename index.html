@@ -20,9 +20,27 @@
             body {
                 background-color: white !important;
                 color: black !important;
+                padding: 0 !important;
+            }
+            #root {
+                background: white !important;
+            }
+            main {
+                margin: 0 !important;
+                max-width: none !important;
+            }
+            .print-break-inside-avoid {
+                break-inside: avoid;
+                page-break-inside: avoid;
             }
             @page {
-                margin: 2cm;
+                margin: 1.5cm;
+                size: portrait;
+            }
+            /* Hide scrollbars and other unnecessary shadows */
+            * {
+                box-shadow: none !important;
+                text-shadow: none !important;
             }
         }
     </style>

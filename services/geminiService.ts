@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
-import { ShotPlan, ImageSize, Entity, AnalysisResponse, EntityIdentificationResponse } from "../types";
+import { ShotPlan, ImageSize, Entity, AnalysisResponse, EntityIdentificationResponse, VisualBreakdown } from "../types";
 
 // STAGE 1: Identify additional locations and items, respecting the global cast
 export const identifyEntities = async (script: string, globalCast: Entity[]): Promise<EntityIdentificationResponse> => {
@@ -51,7 +51,6 @@ export const identifyEntities = async (script: string, globalCast: Entity[]): Pr
 export const performFullDecopaj = async (script: string, assets: Entity[]): Promise<AnalysisResponse> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
-  // Create a clear lookup table for the AI to map names to their refTags
   const assetMapText = assets.map(a => `- ${a.name} (${a.type}): USE REF TAG "${a.refTag}"`).join('\n');
 
   const prompt = `Role: Professional Film Director & Cinematographer.
@@ -100,7 +99,7 @@ Script to process:
                           mood: { type: Type.STRING },
                           color_palette: { type: Type.STRING }
                         },
-                        required: ["environment", "time", "mood"]
+                        required: ["environment", "time", "mood", "color_palette"]
                       },
                       characters: {
                         type: Type.ARRAY,
@@ -108,7 +107,7 @@ Script to process:
                           type: Type.OBJECT,
                           properties: {
                             name: { type: Type.STRING },
-                            reference_image: { type: Type.STRING, description: 'Must match a refTag like "image 1" from assets.' },
+                            reference_image: { type: Type.STRING },
                             position: { type: Type.STRING },
                             appearance: { type: Type.OBJECT, properties: { description: { type: Type.STRING }, expression: { type: Type.STRING } }, required: ["description", "expression"] },
                             actions: { type: Type.STRING },
@@ -136,13 +135,13 @@ Script to process:
                           framing: { type: Type.STRING },
                           perspective: { type: Type.STRING }
                         },
-                        required: ["shot_type", "framing"]
+                        required: ["shot_type", "framing", "perspective"]
                       },
                       camera: {
                         type: Type.OBJECT,
                         properties: {
-                          lens: { type: Type.OBJECT, properties: { focal_length_mm: { type: Type.NUMBER }, type: { type: Type.STRING } }, required: ["focal_length_mm"] },
-                          settings: { type: Type.OBJECT, properties: { aperture: { type: Type.STRING }, focus: { type: Type.STRING } }, required: ["aperture"] }
+                          lens: { type: Type.OBJECT, properties: { focal_length_mm: { type: Type.NUMBER }, type: { type: Type.STRING } }, required: ["focal_length_mm", "type"] },
+                          settings: { type: Type.OBJECT, properties: { aperture: { type: Type.STRING }, focus: { type: Type.STRING } }, required: ["aperture", "focus"] }
                         },
                         required: ["lens", "settings"]
                       },
@@ -153,10 +152,10 @@ Script to process:
                           quality: { type: Type.STRING },
                           color_contrast: { type: Type.STRING }
                         },
-                        required: ["key", "quality"]
+                        required: ["key", "quality", "color_contrast"]
                       }
                     },
-                    required: ["scene", "characters", "camera", "lighting"]
+                    required: ["scene", "characters", "camera", "lighting", "framing_composition"]
                   }
                 },
                 required: ["shot_id", "plan_type", "visual_breakdown", "relevant_entities"]
@@ -183,14 +182,12 @@ export const generateShotImage = async (
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const parts: any[] = [];
 
-  // Add the location reference if it exists
   const locationAsset = assets.find(a => a.type === 'location' && shot.relevant_entities.includes(a.name));
   if (locationAsset?.imageData) {
     parts.push({ inlineData: { data: locationAsset.imageData.split(',')[1], mimeType: locationAsset.mimeType || 'image/png' } });
     parts.push({ text: `ENVIRONMENT REFERENCE [${locationAsset.refTag}]: ${locationAsset.name}. ${locationAsset.description}` });
   }
 
-  // Add character references based on the AI's mapping
   shot.visual_breakdown.characters.forEach(charShot => {
     const asset = assets.find(a => a.refTag === charShot.reference_image) || assets.find(a => a.name === charShot.name);
     if (asset?.imageData) {
@@ -228,20 +225,12 @@ export const generateShotImage = async (
       }
     });
 
-    if (!response.candidates?.[0]?.content?.parts) {
-      throw new Error("Model returned no parts in response content.");
-    }
+    if (!response.candidates?.[0]?.content?.parts) throw new Error("No parts in response.");
 
     const part = response.candidates[0].content.parts.find(p => p.inlineData);
     if (part?.inlineData) return `data:image/png;base64,${part.inlineData.data}`;
     
-    // If we only got text, it might be a rejection or a reasoning part
-    const textPart = response.candidates[0].content.parts.find(p => p.text);
-    if (textPart?.text) {
-      throw new Error(`Model refused image generation or failed: ${textPart.text.substring(0, 100)}...`);
-    }
-
-    throw new Error("Image generation failed: No image data returned by model.");
+    throw new Error("Image generation failed.");
   } catch (error) {
     console.error("Image Gen Error:", error);
     throw error;
@@ -252,12 +241,13 @@ export const editShotImage = async (
   originalBase64: string,
   editPrompt: string,
   shot: ShotPlan
-): Promise<string> => {
+): Promise<{ image_url: string, visual_breakdown: VisualBreakdown }> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  const mimeType = 'image/png'; // Assuming PNG for generated shots
+  const mimeType = 'image/png';
   const base64Data = originalBase64.includes(',') ? originalBase64.split(',')[1] : originalBase64;
 
-  const promptText = `
+  // STEP 1: Generate the new visual
+  const genPromptText = `
     You are a professional film colorist and VFX supervisor.
     TASK: Modify the attached cinematic film still according to the instruction below.
     
@@ -268,35 +258,82 @@ export const editShotImage = async (
     RESULT: Output a single cinematic frame. NO TEXT, LOGOS, OR CAPTIONS.
   `;
 
+  let newImageUrl = "";
+
   try {
-    const response = await ai.models.generateContent({
+    const imgResponse = await ai.models.generateContent({
       model: 'gemini-2.5-flash-image',
       contents: {
         parts: [
           { inlineData: { data: base64Data, mimeType } },
-          { text: promptText }
+          { text: genPromptText }
         ]
       },
-      config: { 
-        imageConfig: { aspectRatio: "16:9" }
+      config: { imageConfig: { aspectRatio: "16:9" } }
+    });
+
+    const part = imgResponse.candidates?.[0]?.content?.parts.find(p => p.inlineData);
+    if (part?.inlineData) {
+      newImageUrl = `data:image/png;base64,${part.inlineData.data}`;
+    } else {
+      throw new Error("Visual update failed.");
+    }
+
+    // STEP 2: Update the Metadata JSON to match the new visual
+    const metaPrompt = `
+      You are a professional Director of Photography. 
+      I have just edited a film shot with this instruction: "${editPrompt}".
+      
+      Here is the ORIGINAL technical JSON for that shot:
+      ${JSON.stringify(shot.visual_breakdown)}
+      
+      TASK: Update the JSON to reflect the changes from the edit instruction.
+      - If the instruction was "Make it moonlight", update lighting.key and color_palette.
+      - If the instruction was "Zoom in more", update framing_composition.shot_type and focal_length_mm.
+      - If the instruction was "Make him angry", update characters[].appearance.expression.
+      
+      MANDATORY: Return the FULL and COMPLETE updated JSON object following the structure provided.
+    `;
+
+    const metaResponse = await ai.models.generateContent({
+      model: 'gemini-3-flash-preview',
+      contents: metaPrompt,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            scene: { type: Type.OBJECT, properties: { environment: { type: Type.OBJECT, properties: { location_type: { type: Type.STRING }, description: { type: Type.STRING } } }, time: { type: Type.STRING }, mood: { type: Type.STRING }, color_palette: { type: Type.STRING } }, required: ["environment", "time", "mood", "color_palette"] },
+            characters: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, reference_image: { type: Type.STRING }, position: { type: Type.STRING }, appearance: { type: Type.OBJECT, properties: { description: { type: Type.STRING }, expression: { type: Type.STRING } } }, actions: { type: Type.STRING }, lighting_effect: { type: Type.STRING } }, required: ["name", "reference_image", "position", "appearance", "actions", "lighting_effect"] } },
+            objects: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, details: { type: Type.STRING } } } },
+            framing_composition: { type: Type.OBJECT, properties: { shot_type: { type: Type.STRING }, framing: { type: Type.STRING }, perspective: { type: Type.STRING } }, required: ["shot_type", "framing", "perspective"] },
+            camera: { type: Type.OBJECT, properties: { lens: { type: Type.OBJECT, properties: { focal_length_mm: { type: Type.NUMBER }, type: { type: Type.STRING } }, required: ["focal_length_mm", "type"] }, settings: { type: Type.OBJECT, properties: { aperture: { type: Type.STRING }, focus: { type: Type.STRING } }, required: ["aperture", "focus"] } }, required: ["lens", "settings"] },
+            lighting: { type: Type.OBJECT, properties: { key: { type: Type.STRING }, quality: { type: Type.STRING }, color_contrast: { type: Type.STRING } }, required: ["key", "quality", "color_contrast"] }
+          },
+          required: ["scene", "characters", "camera", "lighting", "framing_composition"]
+        }
       }
     });
 
-    if (!response.candidates?.[0]?.content?.parts) {
-      throw new Error("Model returned no parts in response content.");
-    }
+    const updatedMetadata = JSON.parse(metaResponse.text || '{}') as VisualBreakdown;
 
-    const part = response.candidates[0].content.parts.find(p => p.inlineData);
-    if (part?.inlineData) return `data:image/png;base64,${part.inlineData.data}`;
-    
-    const textPart = response.candidates[0].content.parts.find(p => p.text);
-    if (textPart?.text) {
-      throw new Error(`Edit failed: ${textPart.text.substring(0, 100)}...`);
-    }
+    // Defensive merge: If for some reason the response is missing parts, fallback to original shot data
+    const mergedMetadata: VisualBreakdown = {
+      ...shot.visual_breakdown,
+      ...updatedMetadata,
+      scene: { ...shot.visual_breakdown.scene, ...(updatedMetadata.scene || {}) },
+      camera: { ...shot.visual_breakdown.camera, ...(updatedMetadata.camera || {}) },
+      lighting: { ...shot.visual_breakdown.lighting, ...(updatedMetadata.lighting || {}) },
+      framing_composition: { ...shot.visual_breakdown.framing_composition, ...(updatedMetadata.framing_composition || {}) }
+    };
 
-    throw new Error("Image edit failed: No image data returned.");
+    return {
+      image_url: newImageUrl,
+      visual_breakdown: mergedMetadata
+    };
+
   } catch (error) {
-    console.error("Image Edit Error:", error);
+    console.error("Shot Update Error:", error);
     throw error;
   }
 };
