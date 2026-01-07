@@ -1,0 +1,8 @@
+{
+    "name": "Frameline Studio",
+    "description": "A professional tool for film directors and cinematographers to break down scripts into technical shot plans and generate high-fidelity AI storyboards.",
+    "requestFramePermissions": [
+        "camera",
+        "microphone"
+    ]
+}
