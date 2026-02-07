@@ -4,7 +4,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Project, Sequence, ShotPlan, ImageSize, AppState, Entity } from '../types';
 import { identifyEntities, performFullDecopaj, generateShotImage, editShotImage } from '../services/geminiService';
-import { getProjects, createProject, updateProject, deleteProject, BACKEND_URL } from '../services/api';
+import { getProjects, createProject, updateProject, deleteProject, logout, BACKEND_URL } from '../services/api';
 import { ShotCard } from './ShotCard';
 
 const NAV_STORAGE_KEY = 'FILM_STUDIO_NAV_V1';
@@ -479,6 +479,12 @@ const MainApp: React.FC = () => {
         }
     };
 
+    const handleLogout = () => {
+        if (confirm("Are you sure you want to log out?")) {
+            logout();
+        }
+    };
+
     if (!hasMounted) return null;
 
     return (
@@ -503,6 +509,15 @@ const MainApp: React.FC = () => {
                     <div className="text-[10px] px-4 py-1.5 rounded-full border border-emerald-500/50 text-emerald-400 bg-emerald-500/5 uppercase font-black tracking-widest">
                         API Ready
                     </div>
+                    <button
+                        onClick={handleLogout}
+                        className="p-2 text-zinc-500 hover:text-red-500 transition-colors"
+                        title="Logout"
+                    >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                        </svg>
+                    </button>
                 </div>
             </nav>
 

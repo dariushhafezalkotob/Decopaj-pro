@@ -32,6 +32,14 @@ export const register = async (username: string, password: string) => {
     return await res.json();
 };
 
+export const logout = () => {
+    if (typeof window !== 'undefined') {
+        localStorage.removeItem('token');
+        localStorage.removeItem('FILM_STUDIO_NAV_V1');
+        window.location.href = '/login';
+    }
+};
+
 const getHeaders = (): Record<string, string> => {
     if (typeof window === 'undefined') return { 'Content-Type': 'application/json' };
     const token = localStorage.getItem('token');
