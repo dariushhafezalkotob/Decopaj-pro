@@ -34,7 +34,7 @@ process.on('uncaughtException', (err) => {
 });
 
 server.register(cors, {
-    origin: true,
+    origin: true, // In production, Render backend URL will allow the frontend
     methods: ['GET', 'PUT', 'POST', 'DELETE', 'OPTIONS', 'PATCH'],
     credentials: true
 });
