@@ -128,6 +128,9 @@ export const editShotProxy = async (originalBase64: string, editPrompt: string, 
         headers: getHeaders(),
         body: JSON.stringify({ originalBase64, editPrompt, shot, projectName, sequenceTitle })
     });
-    if (!res.ok) throw new Error("Edit Shot Failed");
+    if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.message || "Edit Shot Failed");
+    }
     return await res.json();
 };

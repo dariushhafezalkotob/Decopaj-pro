@@ -14,6 +14,16 @@ export const ShotCard: React.FC<ShotCardProps> = ({ shot, onRetry, onEdit }) => 
     const [showJson, setShowJson] = useState(false);
     const [isEditingMode, setIsEditingMode] = useState(false);
     const [editPrompt, setEditPrompt] = useState('');
+    const [isLightboxOpen, setIsLightboxOpen] = useState(false);
+
+    // Keyboard support for Esc
+    React.useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') setIsLightboxOpen(false);
+        };
+        if (isLightboxOpen) window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [isLightboxOpen]);
 
     const handleEditSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -39,7 +49,8 @@ export const ShotCard: React.FC<ShotCardProps> = ({ shot, onRetry, onEdit }) => 
                     <img
                         src={shot.image_url.startsWith('/') ? `${BACKEND_URL}${shot.image_url}` : shot.image_url}
                         alt={shot.plan_type}
-                        className="w-full h-full object-cover"
+                        onClick={() => setIsLightboxOpen(true)}
+                        className="w-full h-full object-cover cursor-zoom-in hover:scale-105 transition-transform duration-500"
                     />
                 ) : (
                     <div className="absolute inset-0 flex flex-col items-center justify-center print:hidden">
@@ -190,6 +201,37 @@ export const ShotCard: React.FC<ShotCardProps> = ({ shot, onRetry, onEdit }) => 
                     </div>
                 </div>
             </div>
+
+            {/* Lightbox Widget */}
+            {isLightboxOpen && shot.image_url && (
+                <div
+                    className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/95 backdrop-blur-md animate-in fade-in duration-300 print:hidden"
+                    onClick={() => setIsLightboxOpen(false)}
+                >
+                    <div className="relative max-w-[95vw] max-h-[90vh] flex flex-col items-center">
+                        <button
+                            className="absolute -top-12 right-0 text-white/50 hover:text-white transition-colors p-2 group"
+                            onClick={(e) => { e.stopPropagation(); setIsLightboxOpen(false); }}
+                        >
+                            <svg className="w-8 h-8 group-active:scale-95 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                        </button>
+
+                        <img
+                            src={shot.image_url.startsWith('/') ? `${BACKEND_URL}${shot.image_url}` : shot.image_url}
+                            alt={shot.plan_type}
+                            className="w-full h-full object-contain shadow-2xl rounded-lg animate-in zoom-in-95 duration-300"
+                            onClick={(e) => e.stopPropagation()}
+                        />
+
+                        <div className="absolute -bottom-12 left-0 right-0 flex justify-between items-center px-2">
+                            <span className="text-white/40 text-[10px] uppercase font-black tracking-widest">#{shot.shot_id} — {shot.plan_type}</span>
+                            <span className="text-white/40 text-[10px] uppercase font-black tracking-widest">Press ESC to close</span>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

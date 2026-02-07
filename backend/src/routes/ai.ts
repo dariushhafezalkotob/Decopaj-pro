@@ -2,18 +2,35 @@
 import { FastifyInstance } from 'fastify';
 import { GoogleGenAI, Type } from "@google/genai";
 import { saveProjectImage } from '../services/fileService';
+import fs from 'fs';
+import path from 'path';
 
 export default async function aiRoutes(server: FastifyInstance) {
 
+    const getAI = () => new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+
+    // 0. Health check (Public)
+    server.get('/health', async () => {
+        return { status: 'ok', timestamp: new Date().toISOString() };
+    });
+
     server.addHook('preValidation', (request: any, reply, done) => {
+        console.log(`Request: ${request.method} ${request.url}`);
+
+        // Skip auth for health check
+        if (request.url.endsWith('/health')) {
+            return done();
+        }
+
+        if (!request.headers.authorization) {
+            console.warn(`No Authorization header for ${request.url}`);
+        }
         try {
             request.jwtVerify().then(() => done(), (err: any) => reply.send(err));
         } catch (err) {
             reply.send(err);
         }
     });
-
-    const getAI = () => new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
     // 1. Identify Entities
     server.post('/identify-entities', async (request: any, reply) => {
@@ -264,7 +281,26 @@ export default async function aiRoutes(server: FastifyInstance) {
         const { originalBase64, editPrompt, shot, projectName, sequenceTitle } = request.body;
         const ai = getAI();
         const mimeType = 'image/png';
-        const base64Data = originalBase64.includes(',') ? originalBase64.split(',')[1] : originalBase64;
+
+        console.log(`Editing shot: ${shot.shot_id}, Original: ${typeof originalBase64 === 'string' ? originalBase64.substring(0, 50) : 'not a string'}...`);
+
+        let rawBase64 = originalBase64 || '';
+
+        // Handle both relative paths (/public/...) and full URLs (http://.../public/...)
+        const publicMatch = typeof rawBase64 === 'string' ? rawBase64.match(/\/public\/(.+)$/) : null;
+        if (publicMatch) {
+            const relPath = `public/${publicMatch[1]}`;
+            const filePath = path.join(process.cwd(), relPath);
+            console.log(`Local file detected: ${filePath}`);
+            if (fs.existsSync(filePath)) {
+                rawBase64 = fs.readFileSync(filePath).toString('base64');
+            } else {
+                console.error(`File NOT found at: ${filePath}`);
+                throw new Error(`Original image file not found on server at: ${relPath}`);
+            }
+        }
+
+        const base64Data = rawBase64.includes(',') ? rawBase64.split(',')[1] : rawBase64;
 
         // STEP 1: Generate the new visual
         const genPromptText = `
@@ -291,8 +327,12 @@ export default async function aiRoutes(server: FastifyInstance) {
             });
 
             const imgPart = imgResponse.candidates?.[0]?.content?.parts?.find((p: any) => p.inlineData);
-            if (!imgPart?.inlineData?.data) throw new Error("Visual update failed.");
+            if (!imgPart?.inlineData?.data) {
+                console.error("Gemini failed to return image data in imgResponse:", JSON.stringify(imgResponse, null, 2));
+                throw new Error("Visual update failed.");
+            }
 
+            console.log("Gemini image generation successful.");
             let newImageUrl = `data:image/png;base64,${imgPart.inlineData.data}`;
 
             if (projectName && sequenceTitle) {
@@ -302,6 +342,7 @@ export default async function aiRoutes(server: FastifyInstance) {
                     imageId: `shot_${shot.shot_id}_edit_${Date.now()}`,
                     base64Data: imgPart.inlineData.data
                 });
+                console.log(`Saved new image to: ${newImageUrl}`);
             }
 
             // STEP 2: Update the Metadata JSON to match the new visual
@@ -340,7 +381,13 @@ export default async function aiRoutes(server: FastifyInstance) {
                 }
             });
 
-            const updatedMetadata = JSON.parse(metaResponse.text || '{}');
+            console.log("Gemini metadata update response received.");
+            let updatedMetadata: any = {};
+            try {
+                updatedMetadata = JSON.parse(metaResponse.text || '{}');
+            } catch (pErr) {
+                console.error("Failed to parse metadata JSON:", metaResponse.text);
+            }
 
             // Defensive merge: If for some reason the response is missing parts, fallback to original shot data
             const mergedMetadata = {

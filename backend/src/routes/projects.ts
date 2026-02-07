@@ -134,7 +134,12 @@ export default async function projectRoutes(server: FastifyInstance) {
         const userId = request.user.id;
         const { projectId } = request.params;
 
-        await Project.findOneAndDelete({ id: projectId, user_id: userId });
+        let query: any = { id: projectId, user_id: userId };
+        let project = await Project.findOneAndDelete(query);
+
+        if (!project && projectId.match(/^[0-9a-fA-F]{24}$/)) {
+            project = await Project.findOneAndDelete({ _id: projectId, user_id: userId });
+        }
         return { message: "Deleted" };
     });
 
