@@ -261,7 +261,7 @@ export default async function aiRoutes(server: FastifyInstance) {
 
     // 3. Generate Image
     server.post('/generate-image', async (request: any, reply) => {
-        const { shot, size, assets, projectName, sequenceTitle } = request.body;
+        const { shot, size, assets, projectName, sequenceTitle, projectId, sequenceId } = request.body;
         const ai = getAI();
         const parts: any[] = [];
 
@@ -340,7 +340,7 @@ export default async function aiRoutes(server: FastifyInstance) {
             const part = response.candidates?.[0]?.content?.parts?.find((p: any) => p.inlineData);
             if (part?.inlineData?.data) {
                 const imageUrl = await saveMedia(
-                    `shot_${shot.shot_id}`,
+                    `${projectId || 'global'}_${sequenceId || 'default'}_shot_${shot.shot_id}`,
                     part.inlineData.data
                 );
                 return { image_url: imageUrl };
@@ -359,7 +359,7 @@ export default async function aiRoutes(server: FastifyInstance) {
 
     // 4. Edit Shot
     server.post('/edit-shot', async (request: any, reply) => {
-        const { originalBase64, editPrompt, shot, projectName, sequenceTitle } = request.body;
+        const { originalBase64, editPrompt, shot, projectName, sequenceTitle, projectId, sequenceId } = request.body;
         const ai = getAI();
         const mimeType = 'image/png';
 
@@ -411,7 +411,7 @@ export default async function aiRoutes(server: FastifyInstance) {
 
             console.log("Gemini image generation successful.");
             const newImageUrl = await saveMedia(
-                `shot_${shot.shot_id}_edit_${Date.now()}`,
+                `${projectId || 'global'}_${sequenceId || 'default'}_shot_${shot.shot_id}_edit_${Date.now()}`,
                 imgPart.inlineData.data
             );
             console.log(`Saved new image to: ${newImageUrl}`);

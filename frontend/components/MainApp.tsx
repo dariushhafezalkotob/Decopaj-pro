@@ -298,7 +298,9 @@ const MainApp: React.FC = () => {
                 state.imageSize,
                 allAssets,
                 activeProject.name,
-                activeSequence.title
+                activeSequence.title,
+                activeProject.id,
+                activeSequence.id
             );
             setState(prev => ({
                 ...prev,
@@ -347,7 +349,9 @@ const MainApp: React.FC = () => {
                 editPrompt,
                 activeSequence.shots[shotIdx],
                 activeProject.name,
-                activeSequence.title
+                activeSequence.title,
+                activeProject.id,
+                activeSequence.id
             );
 
             setState(prev => ({
@@ -407,7 +411,9 @@ const MainApp: React.FC = () => {
                         state.imageSize,
                         allAssets,
                         activeProject.name,
-                        activeSequence.title
+                        activeSequence.title,
+                        activeProject.id,
+                        activeSequence.id
                     );
                     setState(prev => ({
                         ...prev,
