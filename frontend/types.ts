@@ -101,4 +101,6 @@ export interface AppState {
     imageSize: ImageSize;
     hasApiKey: boolean;
     error: string | null;
+    insertionIndex: number | null;
+    insertionPrompt: string;
 }

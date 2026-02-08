@@ -63,6 +63,50 @@ const AssetCard: React.FC<AssetCardProps> = ({
     </div>
 );
 
+const InsertPromptCard: React.FC<{
+    value: string;
+    onChange: (val: string) => void;
+    onConfirm: () => void;
+    onCancel: () => void;
+    isAnalyzing: boolean;
+}> = ({ value, onChange, onConfirm, onCancel, isAnalyzing }) => {
+    return (
+        <div className="aspect-square bg-zinc-900 border border-zinc-800 rounded-3xl p-6 flex flex-col items-center justify-center relative group/insert">
+            <h3 className="text-[10px] font-black uppercase tracking-widest text-amber-500 mb-4 self-start">Describe New Plan</h3>
+            <textarea
+                value={value}
+                onChange={(e) => onChange(e.target.value)}
+                placeholder="Close up of character A looking at the car..."
+                className="flex-1 w-full bg-black/50 border border-zinc-800 rounded-xl p-4 text-[11px] font-bold text-white placeholder:text-zinc-700 focus:border-amber-500 outline-none resize-none mb-4"
+                disabled={isAnalyzing}
+            />
+            <div className="flex w-full space-x-3">
+                <button
+                    onClick={onCancel}
+                    className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all"
+                    disabled={isAnalyzing}
+                >
+                    Cancel
+                </button>
+                <button
+                    onClick={onConfirm}
+                    disabled={isAnalyzing || !value.trim()}
+                    className="flex-1 bg-amber-500 disabled:bg-zinc-800 disabled:text-zinc-600 hover:bg-amber-400 text-zinc-950 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-lg shadow-amber-500/20"
+                >
+                    {isAnalyzing ? 'Analyzing...' : 'Insert'}
+                </button>
+            </div>
+
+            {isAnalyzing && (
+                <div className="absolute inset-0 bg-zinc-950/80 rounded-3xl z-10 flex flex-col items-center justify-center backdrop-blur-sm animate-in fade-in">
+                    <div className="w-10 h-10 border-4 border-amber-500/20 border-t-amber-500 rounded-full animate-spin mb-4" />
+                    <span className="text-[10px] font-black uppercase tracking-widest animate-pulse">Analyzing...</span>
+                </div>
+            )}
+        </div>
+    );
+};
+
 const MainApp: React.FC = () => {
     const storyboardRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -95,7 +139,9 @@ const MainApp: React.FC = () => {
         isSyncing: false,
         hasFileSystemAccess: false,
         isIframe: false,
-        showDriveGuide: false
+        showDriveGuide: false,
+        insertionIndex: null,
+        insertionPrompt: ''
     });
 
     // Initial Load from Backend
@@ -384,19 +430,21 @@ const MainApp: React.FC = () => {
         }
     };
 
-    const handleInsertShot = async (index: number) => {
-        if (!activeProject || !activeSequence) return;
-        const description = prompt("Describe the shot to insert:");
-        if (!description) return;
+    const handleInsertShot = (index: number) => {
+        setState(prev => ({ ...prev, insertionIndex: index, insertionPrompt: '' }));
+    };
+
+    const submitInsertion = async () => {
+        const { insertionIndex, insertionPrompt } = state;
+        if (insertionIndex === null || !insertionPrompt || !activeProject || !activeSequence) return;
 
         setState(prev => ({ ...prev, isAnalyzing: true }));
 
         const allAssets = [...activeProject.globalCast, ...activeSequence.assets];
 
         try {
-            const shotAnalysis = await analyzeCustomShot(description, allAssets);
+            const shotAnalysis = await analyzeCustomShot(insertionPrompt, allAssets);
 
-            // Insert into sequence with loading state
             // Generate a unique shot_id to avoid collisions
             const uniqueShotId = `custom_${Date.now()}`;
             const newShot: ShotPlan = { ...shotAnalysis, shot_id: uniqueShotId, loading: true };
@@ -405,14 +453,16 @@ const MainApp: React.FC = () => {
                 ...prev,
                 isAnalyzing: false,
                 isGeneratingImages: true,
+                insertionIndex: null,
+                insertionPrompt: '',
                 projects: prev.projects.map(p => p.id === prev.activeProjectId ? {
                     ...p,
                     sequences: p.sequences.map(s => s.id === prev.activeSequenceId ? {
                         ...s,
                         shots: [
-                            ...s.shots.slice(0, index),
+                            ...s.shots.slice(0, insertionIndex),
                             newShot,
-                            ...s.shots.slice(index)
+                            ...s.shots.slice(insertionIndex)
                         ]
                     } : s)
                 } : p)
@@ -443,7 +493,7 @@ const MainApp: React.FC = () => {
             }));
 
         } catch (err: any) {
-            setState(prev => ({ ...prev, isAnalyzing: false, isGeneratingImages: false, error: err.message }));
+            setState(prev => ({ ...prev, isAnalyzing: false, isGeneratingImages: false, error: err.message, insertionIndex: null }));
         }
     };
 
@@ -855,49 +905,63 @@ const MainApp: React.FC = () => {
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 pb-32 print:grid-cols-1 print:gap-12 print:pb-0">
-                            {/* Insert at beginning */}
-                            <div className="md:col-span-2 lg:col-span-3 -mb-4 flex justify-center">
-                                <button
-                                    onClick={() => handleInsertShot(0)}
-                                    className="group flex items-center space-x-2 bg-zinc-900/50 hover:bg-amber-500/10 border border-zinc-800 hover:border-amber-500/50 px-4 py-2 rounded-full transition-all"
-                                >
-                                    <svg className="w-4 h-4 text-zinc-600 group-hover:text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
-                                    <span className="text-[10px] font-black uppercase tracking-widest text-zinc-500 group-hover:text-amber-500">Insert Shot #1</span>
-                                </button>
-                            </div>
+                            {/* Insert Prompt at index 0 */}
+                            {state.insertionIndex === 0 && (
+                                <InsertPromptCard
+                                    value={state.insertionPrompt}
+                                    onChange={(val: string) => setState(p => ({ ...p, insertionPrompt: val }))}
+                                    onConfirm={submitInsertion}
+                                    onCancel={() => setState(p => ({ ...p, insertionIndex: null }))}
+                                    isAnalyzing={state.isAnalyzing}
+                                />
+                            )}
 
                             {activeSequence.shots.map((shot, idx) => (
                                 <React.Fragment key={shot.shot_id}>
-                                    <ShotCard
-                                        shot={shot}
-                                        onRetry={() => handleRetryShot(shot.shot_id)}
-                                        onEdit={(prompt) => handleEditShot(shot.shot_id, prompt)}
-                                    />
-                                    {/* Insert button after each shot */}
-                                    {idx < activeSequence.shots.length - 1 && (
-                                        <div className="md:col-span-2 lg:col-span-3 -my-2 flex justify-center h-4">
+                                    <div className="relative group/card">
+                                        <ShotCard
+                                            shot={shot}
+                                            onRetry={() => handleRetryShot(shot.shot_id)}
+                                            onEdit={(prompt) => handleEditShot(shot.shot_id, prompt)}
+                                        />
+
+                                        {/* Hover "+" button for NEXT slot */}
+                                        <div className="absolute -right-4 top-1/2 -translate-y-1/2 z-20 opacity-0 group-hover/card:opacity-100 transition-opacity hidden lg:block">
                                             <button
                                                 onClick={() => handleInsertShot(idx + 1)}
-                                                className="group opacity-0 hover:opacity-100 flex items-center space-x-2 bg-zinc-950 border border-zinc-800 hover:border-amber-500/50 px-3 py-1 rounded-full transition-all scale-75 hover:scale-100 z-10"
+                                                className="bg-amber-500 text-black p-1.5 rounded-full shadow-xl hover:scale-110 transition-transform"
+                                                title={`Insert after shot ${idx + 1}`}
                                             >
-                                                <svg className="w-3 h-3 text-zinc-600 group-hover:text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
-                                                <span className="text-[8px] font-black uppercase tracking-widest text-zinc-500 group-hover:text-amber-500">Insert between {idx + 1} & {idx + 2}</span>
+                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
                                             </button>
                                         </div>
+                                    </div>
+
+                                    {/* Insert Prompt Card when active */}
+                                    {state.insertionIndex === idx + 1 && (
+                                        <InsertPromptCard
+                                            value={state.insertionPrompt}
+                                            onChange={(val: string) => setState(p => ({ ...p, insertionPrompt: val }))}
+                                            onConfirm={submitInsertion}
+                                            onCancel={() => setState(p => ({ ...p, insertionIndex: null }))}
+                                            isAnalyzing={state.isAnalyzing}
+                                        />
                                     )}
                                 </React.Fragment>
                             ))}
 
-                            {/* Insert at the end */}
-                            <div className="md:col-span-2 lg:col-span-3 -mt-4 flex justify-center">
+                            {/* Add button at the end if none active */}
+                            {state.insertionIndex === null && (
                                 <button
                                     onClick={() => handleInsertShot(activeSequence.shots.length)}
-                                    className="group flex items-center space-x-2 bg-zinc-900/50 hover:bg-amber-500/10 border border-zinc-800 hover:border-amber-500/50 px-4 py-2 rounded-full transition-all"
+                                    className="aspect-square rounded-3xl border-2 border-dashed border-zinc-800 hover:border-amber-500/50 hover:bg-amber-500/5 transition-all flex flex-col items-center justify-center group"
                                 >
-                                    <svg className="w-4 h-4 text-zinc-600 group-hover:text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
-                                    <span className="text-[10px] font-black uppercase tracking-widest text-zinc-500 group-hover:text-amber-500">Append New Shot</span>
+                                    <div className="bg-zinc-900 p-4 rounded-full mb-4 group-hover:scale-110 transition-transform">
+                                        <svg className="w-8 h-8 text-zinc-600 group-hover:text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
+                                    </div>
+                                    <span className="text-[10px] font-black uppercase tracking-widest text-zinc-500 group-hover:text-amber-500">Add New Plan</span>
                                 </button>
-                            </div>
+                            )}
                         </div>
                     </div>
                 )}
