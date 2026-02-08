@@ -152,7 +152,7 @@ export default async function aiRoutes(server: FastifyInstance) {
       INSTRUCTIONS:
       1. Break the scene into logical Shots/Plans.
       2. For each shot, list the characters present in that frame.
-      3. CRITICAL: For every character, you MUST populate the "reference_image" field with the exact "image X" ref tag from the mapping table above.
+      3. CRITICAL: For every character AND every object/item, you MUST populate the "reference_image" field with the exact "image X" ref tag from the mapping table above if a matching asset exists.
       4. Provide detailed physical positioning and lighting effects specifically for those characters.
       5. Technical camera specs should be professional (e.g., 35mm lens, f/2.8, shallow depth of field).
       
@@ -210,6 +210,7 @@ export default async function aiRoutes(server: FastifyInstance) {
                                                     type: Type.OBJECT,
                                                     properties: {
                                                         name: { type: Type.STRING },
+                                                        reference_image: { type: Type.STRING },
                                                         details: { type: Type.STRING },
                                                         action: { type: Type.STRING }
                                                     },
@@ -288,6 +289,20 @@ export default async function aiRoutes(server: FastifyInstance) {
         ACTION: ${charShot.actions}
         LIGHTING ON THEM: ${charShot.lighting_effect}`
                 });
+            }
+        }
+
+        // Add Object references
+        if (shot.visual_breakdown.objects) {
+            for (const obj of shot.visual_breakdown.objects) {
+                if (obj.reference_image) {
+                    const asset = assets.find((a: any) => a.refTag === obj.reference_image) || assets.find((a: any) => a.name === obj.name);
+                    const objRes = await resolveImageResource(asset?.imageData);
+                    if (objRes) {
+                        parts.push({ inlineData: { data: objRes.data, mimeType: objRes.mimeType } });
+                        parts.push({ text: `OBJECT/ITEM REFERENCE [${obj.reference_image}]: "${obj.name}". Details: ${obj.details}` });
+                    }
+                }
             }
         }
 
@@ -427,7 +442,7 @@ export default async function aiRoutes(server: FastifyInstance) {
                         properties: {
                             scene: { type: Type.OBJECT, properties: { environment: { type: Type.OBJECT, properties: { location_type: { type: Type.STRING }, description: { type: Type.STRING } } }, time: { type: Type.STRING }, mood: { type: Type.STRING }, color_palette: { type: Type.STRING } }, required: ["environment", "time", "mood", "color_palette"] },
                             characters: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, reference_image: { type: Type.STRING }, position: { type: Type.STRING }, appearance: { type: Type.OBJECT, properties: { description: { type: Type.STRING }, expression: { type: Type.STRING } } }, actions: { type: Type.STRING }, lighting_effect: { type: Type.STRING } }, required: ["name", "reference_image", "position", "appearance", "actions", "lighting_effect"] } },
-                            objects: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, details: { type: Type.STRING } } } },
+                            objects: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, reference_image: { type: Type.STRING }, details: { type: Type.STRING }, action: { type: Type.STRING } }, required: ["name", "details"] } },
                             framing_composition: { type: Type.OBJECT, properties: { shot_type: { type: Type.STRING }, framing: { type: Type.STRING }, perspective: { type: Type.STRING } }, required: ["shot_type", "framing", "perspective"] },
                             camera: { type: Type.OBJECT, properties: { lens: { type: Type.OBJECT, properties: { focal_length_mm: { type: Type.NUMBER }, type: { type: Type.STRING } }, required: ["focal_length_mm", "type"] }, settings: { type: Type.OBJECT, properties: { aperture: { type: Type.STRING }, focus: { type: Type.STRING } }, required: ["aperture", "focus"] } }, required: ["lens", "settings"] },
                             lighting: { type: Type.OBJECT, properties: { key: { type: Type.STRING }, quality: { type: Type.STRING }, color_contrast: { type: Type.STRING } }, required: ["key", "quality", "color_contrast"] }

@@ -22,6 +22,7 @@ export interface VisualBreakdown {
     characters: CharacterShotDetail[];
     objects: Array<{
         name: string;
+        reference_image?: string;
         details: string;
         action?: string;
     }>;
