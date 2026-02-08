@@ -306,6 +306,7 @@ export default async function aiRoutes(server: FastifyInstance) {
                 console.log(`Finish reason for ${shot.shot_id}: ${response.candidates[0].finishReason}`);
             }
 
+            const part = response.candidates?.[0]?.content?.parts?.find((p: any) => p.inlineData);
             if (part?.inlineData?.data) {
                 const imageUrl = await saveMedia(
                     `shot_${shot.shot_id}`,
