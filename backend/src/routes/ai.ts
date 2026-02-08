@@ -204,10 +204,7 @@ export default async function aiRoutes(server: FastifyInstance) {
         const parts: any[] = [];
 
         // High resolution model selection
-        let model = 'gemini-2.5-flash-image';
-        if (size === '2K' || size === '4K') {
-            model = 'gemini-3-pro-image-preview';
-        }
+        const model = 'gemini-3-pro-image-preview';
 
         const locationAsset = assets.find((a: any) => a.type === 'location' && shot.relevant_entities.includes(a.name));
         if (locationAsset?.imageData) {
@@ -316,7 +313,7 @@ export default async function aiRoutes(server: FastifyInstance) {
 
         try {
             const imgResponse = await ai.models.generateContent({
-                model: 'gemini-2.5-flash-image',
+                model: 'gemini-3-pro-image-preview',
                 contents: {
                     parts: [
                         { inlineData: { data: base64Data, mimeType } },
