@@ -67,14 +67,18 @@ export const createProject = async (project: any) => {
 export const updateProject = async (id: string, project: any) => {
     try {
         const url = `${API_URL}/projects/${id}`;
-        console.log(`Updating project at ${url}`);
-        console.log(`Payload size: ${JSON.stringify(project).length} chars`);
+        if (project.sequences.length > 0) {
+            console.log(`Syncing project ${id} (${project.name})...`);
+        }
         const res = await fetch(url, {
             method: 'PUT',
             headers: getHeaders(),
             body: JSON.stringify(project)
         });
-        console.log(res);
+
+        if (project.sequences.length > 0) {
+            console.log(`Sync response for ${id}:`, res.status);
+        }
         if (res.status === 401) {
             window.location.href = '/login';
             return;
@@ -120,25 +124,52 @@ export const analyzeScriptProxy = async (script: string, assets: any[]) => {
 };
 
 export const generateImageProxy = async (shot: any, size: string, assets: any[], projectName: string, sequenceTitle: string) => {
-    const res = await fetch(`${API_URL}/ai/generate-image`, {
-        method: 'POST',
-        headers: getHeaders(),
-        body: JSON.stringify({ shot, size, assets, projectName, sequenceTitle })
-    });
-    if (!res.ok) throw new Error("Image Gen Failed");
-    const data = await res.json();
-    return data.image_url;
+    console.log(`Starting image generation for shot ${shot.shot_id}...`);
+    const startTime = Date.now();
+    try {
+        const res = await fetch(`${API_URL}/ai/generate-image`, {
+            method: 'POST',
+            headers: getHeaders(),
+            body: JSON.stringify({ shot, size, assets, projectName, sequenceTitle })
+        });
+        const duration = (Date.now() - startTime) / 1000;
+        console.log(`Image generation response for ${shot.shot_id} received in ${duration}s:`, res.status);
+
+        if (!res.ok) {
+            const errorText = await res.text().catch(() => "Unknown error");
+            console.error(`Image generation FAILED for ${shot.shot_id}:`, res.status, errorText);
+            throw new Error(`Image Gen Failed: ${res.status} ${res.statusText}`);
+        }
+        const data = await res.json();
+        return data.image_url;
+    } catch (err: any) {
+        const duration = (Date.now() - startTime) / 1000;
+        console.error(`Image generation NETWORK ERROR for ${shot.shot_id} after ${duration}s:`, err);
+        throw err;
+    }
 };
 
 export const editShotProxy = async (originalBase64: string, editPrompt: string, shot: any, projectName: string, sequenceTitle: string) => {
-    const res = await fetch(`${API_URL}/ai/edit-shot`, {
-        method: 'POST',
-        headers: getHeaders(),
-        body: JSON.stringify({ originalBase64, editPrompt, shot, projectName, sequenceTitle })
-    });
-    if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.message || "Edit Shot Failed");
+    console.log(`Starting shot edit for shot ${shot.shot_id}...`);
+    const startTime = Date.now();
+    try {
+        const res = await fetch(`${API_URL}/ai/edit-shot`, {
+            method: 'POST',
+            headers: getHeaders(),
+            body: JSON.stringify({ originalBase64, editPrompt, shot, projectName, sequenceTitle })
+        });
+        const duration = (Date.now() - startTime) / 1000;
+        console.log(`Edit shot response for ${shot.shot_id} received in ${duration}s:`, res.status);
+
+        if (!res.ok) {
+            const errorData = await res.json().catch(() => ({}));
+            console.error(`Edit shot FAILED for ${shot.shot_id}:`, res.status, errorData);
+            throw new Error(errorData.message || "Edit Shot Failed");
+        }
+        return await res.json();
+    } catch (err: any) {
+        const duration = (Date.now() - startTime) / 1000;
+        console.error(`Edit shot NETWORK ERROR for ${shot.shot_id} after ${duration}s:`, err);
+        throw err;
     }
-    return await res.json();
 };
