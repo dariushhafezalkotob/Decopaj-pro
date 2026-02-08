@@ -3,13 +3,13 @@ import { FastifyInstance } from 'fastify';
 import { Project } from '../models';
 import { saveMedia } from '../services/mediaService';
 
-const processProjectImages = async (projectName: string, data: any) => {
+const processProjectImages = async (projectId: string, data: any) => {
     // Process global cast
     if (data.globalCast) {
         for (const entity of data.globalCast) {
             if (entity.imageData && entity.imageData.startsWith('data:image')) {
                 entity.imageData = await saveMedia(
-                    `global_asset_${entity.id}`,
+                    `${projectId}_cast_${entity.id}`,
                     entity.imageData,
                     entity.mimeType || 'image/png'
                 );
@@ -25,7 +25,7 @@ const processProjectImages = async (projectName: string, data: any) => {
                 for (const asset of seq.assets) {
                     if (asset.imageData && asset.imageData.startsWith('data:image')) {
                         asset.imageData = await saveMedia(
-                            `seq_asset_${asset.id}`,
+                            `${projectId}_seq_${seq.id}_asset_${asset.id}`,
                             asset.imageData,
                             asset.mimeType || 'image/png'
                         );
@@ -37,7 +37,7 @@ const processProjectImages = async (projectName: string, data: any) => {
                 for (const shot of seq.shots) {
                     if (shot.image_url && shot.image_url.startsWith('data:image')) {
                         shot.image_url = await saveMedia(
-                            `shot_${shot.shot_id}`,
+                            `${projectId}_shot_${shot.shot_id}`,
                             shot.image_url
                         );
                     }
@@ -66,7 +66,8 @@ export default async function projectRoutes(server: FastifyInstance) {
     server.post('/', async (request: any, reply) => {
         const userId = request.user.id;
         const data = request.body;
-        await processProjectImages(data.name || 'Untitled', data);
+        const tempId = data.id || `proj-${Date.now()}`;
+        await processProjectImages(tempId, data);
         console.log("Creating project for user:", userId);
 
         // Assign generic ID if missing or used from frontend generic logic
@@ -89,7 +90,7 @@ export default async function projectRoutes(server: FastifyInstance) {
         console.log(`Updating project: ${projectId}, Payload size: ${bodySize} chars`);
 
         const updateData = { ...data };
-        await processProjectImages(updateData.name || 'Untitled', updateData);
+        await processProjectImages(projectId, updateData);
         delete updateData._id;
         delete updateData.__v;
         delete updateData.user_id;
@@ -146,6 +147,7 @@ export default async function projectRoutes(server: FastifyInstance) {
 
         // Simple sync strategy: upsert all
         for (const p of projects) {
+            await processProjectImages(p.id, p);
             await Project.findOneAndUpdate(
                 { id: p.id, user_id: userId },
                 { ...p, user_id: userId },

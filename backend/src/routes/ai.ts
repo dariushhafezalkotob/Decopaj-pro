@@ -1,7 +1,7 @@
 
 import { FastifyInstance } from 'fastify';
 import { GoogleGenAI, Type } from "@google/genai";
-import { saveMedia } from '../services/mediaService';
+import { saveMedia, getMedia } from '../services/mediaService';
 import fs from 'fs';
 import path from 'path';
 
@@ -10,10 +10,27 @@ export default async function aiRoutes(server: FastifyInstance) {
     const getAI = () => new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
     const mimeType = 'image/png';
 
-    const resolveImageResource = (input: string) => {
+    const resolveImageResource = async (input: string) => {
         if (!input) return null;
 
         console.log(`Resolving image: ${input.substring(0, 50)}${input.length > 50 ? '...' : ''}`);
+
+        // Handle database-stored media URLs (e.g., /api/media/...)
+        const mediaMatch = input.match(/\/api\/media\/(.+)$/);
+        if (mediaMatch) {
+            const mediaId = mediaMatch[1];
+            console.log(`Fetching from database: ${mediaId}`);
+            const media = await getMedia(mediaId);
+            if (media) {
+                console.log(`Media found in DB!`);
+                return {
+                    data: media.data,
+                    mimeType: media.mimeType || mimeType
+                };
+            }
+            console.warn(`Media NOT found in DB: ${mediaId}`);
+            return null;
+        }
 
         // Handle local file path (e.g., /public/shots/...)
         const publicMatch = input.match(/\/public\/(.+)$/);
@@ -30,7 +47,6 @@ export default async function aiRoutes(server: FastifyInstance) {
                 };
             }
             console.warn(`Local file NOT found: ${filePath}. cwd is ${process.cwd()}`);
-            // If it was a /public/ path but file missing, DON'T fall through to return path as base64
             return null;
         }
 
@@ -252,15 +268,15 @@ export default async function aiRoutes(server: FastifyInstance) {
         const model = 'gemini-3-pro-image-preview';
 
         const locationAsset = assets.find((a: any) => a.type === 'location' && shot.relevant_entities.includes(a.name));
-        const locRes = resolveImageResource(locationAsset?.imageData);
+        const locRes = await resolveImageResource(locationAsset?.imageData);
         if (locRes) {
             parts.push({ inlineData: { data: locRes.data, mimeType: locRes.mimeType } });
             parts.push({ text: `ENVIRONMENT REFERENCE [${locationAsset.refTag}]: ${locationAsset.name}. ${locationAsset.description}` });
         }
 
-        shot.visual_breakdown.characters.forEach((charShot: any) => {
+        for (const charShot of shot.visual_breakdown.characters) {
             const asset = assets.find((a: any) => a.refTag === charShot.reference_image) || assets.find((a: any) => a.name === charShot.name);
-            const charRes = resolveImageResource(asset?.imageData);
+            const charRes = await resolveImageResource(asset?.imageData);
             if (charRes) {
                 parts.push({ inlineData: { data: charRes.data, mimeType: charRes.mimeType } });
                 parts.push({
@@ -273,7 +289,7 @@ export default async function aiRoutes(server: FastifyInstance) {
         LIGHTING ON THEM: ${charShot.lighting_effect}`
                 });
             }
-        });
+        }
 
         parts.push({
             text: `
@@ -334,7 +350,7 @@ export default async function aiRoutes(server: FastifyInstance) {
 
         console.log(`Editing shot: ${shot.shot_id}, Original: ${typeof originalBase64 === 'string' ? originalBase64.substring(0, 50) : 'not a string'}...`);
 
-        const imageRes = resolveImageResource(originalBase64);
+        const imageRes = await resolveImageResource(originalBase64);
         if (!imageRes) throw new Error("No original image data provided.");
         const base64Data = imageRes.data;
         const currentMimeType = imageRes.mimeType;

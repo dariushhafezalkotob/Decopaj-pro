@@ -66,14 +66,22 @@ server.register(aiRoutes, { prefix: '/api/ai' });
 // Public Media serving route
 server.get('/api/media/:mediaId', async (request: any, reply) => {
     const { mediaId } = request.params;
-    const media = await getMedia(mediaId);
+    console.log(`Media request received for ID: ${mediaId}`);
+    try {
+        const media = await getMedia(mediaId);
 
-    if (!media) {
-        return reply.code(404).send({ message: "Media not found" });
+        if (!media) {
+            console.warn(`Media NOT found in DB for ID: ${mediaId}`);
+            return reply.code(404).send({ message: "Media not found" });
+        }
+
+        console.log(`Media found! Size: ${media.data.length} chars, Type: ${media.mimeType}`);
+        const buffer = Buffer.from(media.data, 'base64');
+        reply.type(media.mimeType || 'image/png').send(buffer);
+    } catch (err: any) {
+        console.error(`Error serving media ${mediaId}:`, err.message);
+        reply.code(500).send({ message: "Error retrieving media" });
     }
-
-    const buffer = Buffer.from(media.data, 'base64');
-    reply.type(media.mimeType || 'image/png').send(buffer);
 });
 
 const start = async () => {
