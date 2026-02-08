@@ -13,29 +13,44 @@ export default async function aiRoutes(server: FastifyInstance) {
     const resolveImageResource = (input: string) => {
         if (!input) return null;
 
+        console.log(`Resolving image: ${input.substring(0, 50)}${input.length > 50 ? '...' : ''}`);
+
         // Handle local file path (e.g., /public/shots/...)
         const publicMatch = input.match(/\/public\/(.+)$/);
         if (publicMatch) {
-            const relPath = `public/${publicMatch[1]}`;
+            const relPath = `public/${publicMatch[1].split('?')[0]}`; // Strip query params
             const filePath = path.join(process.cwd(), relPath);
+            console.log(`Checking local path: ${filePath}`);
+
             if (fs.existsSync(filePath)) {
+                console.log(`File found! Reading...`);
                 return {
                     data: fs.readFileSync(filePath).toString('base64'),
                     mimeType
                 };
             }
-            console.error(`Local file NOT found: ${filePath}`);
+            console.warn(`Local file NOT found: ${filePath}. cwd is ${process.cwd()}`);
+            // If it was a /public/ path but file missing, DON'T fall through to return path as base64
+            return null;
         }
 
         // Handle Data URL
         if (input.includes('base64,')) {
+            console.log(`Detected Data URL`);
             return {
                 data: input.split('base64,')[1],
                 mimeType: input.split(';')[0].split(':')[1] || mimeType
             };
         }
 
-        // Assume raw base64 or other string we can't process as file
+        // If it starts with http or /, and we reached here, it's a broken link we can't resolve
+        if (input.startsWith('http') || input.startsWith('/')) {
+            console.warn(`Unresolvable image link: ${input}`);
+            return null;
+        }
+
+        // Assume raw base64
+        console.log(`Assuming raw base64 data`);
         return { data: input, mimeType };
     };
 
