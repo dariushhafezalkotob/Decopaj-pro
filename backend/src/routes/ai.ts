@@ -1,7 +1,7 @@
 
 import { FastifyInstance } from 'fastify';
 import { GoogleGenAI, Type } from "@google/genai";
-import { saveProjectImage } from '../services/fileService';
+import { saveMedia } from '../services/mediaService';
 import fs from 'fs';
 import path from 'path';
 
@@ -306,19 +306,11 @@ export default async function aiRoutes(server: FastifyInstance) {
                 console.log(`Finish reason for ${shot.shot_id}: ${response.candidates[0].finishReason}`);
             }
 
-            const part = response.candidates?.[0]?.content?.parts?.find((p: any) => p.inlineData);
             if (part?.inlineData?.data) {
-                let imageUrl = `data:image/png;base64,${part.inlineData.data}`;
-
-                if (projectName && sequenceTitle) {
-                    imageUrl = await saveProjectImage({
-                        projectName,
-                        sequenceTitle,
-                        imageId: `shot_${shot.shot_id}`,
-                        base64Data: part.inlineData.data
-                    });
-                }
-
+                const imageUrl = await saveMedia(
+                    `shot_${shot.shot_id}`,
+                    part.inlineData.data
+                );
                 return { image_url: imageUrl };
             }
 
@@ -386,17 +378,11 @@ export default async function aiRoutes(server: FastifyInstance) {
             }
 
             console.log("Gemini image generation successful.");
-            let newImageUrl = `data:image/png;base64,${imgPart.inlineData.data}`;
-
-            if (projectName && sequenceTitle) {
-                newImageUrl = await saveProjectImage({
-                    projectName,
-                    sequenceTitle,
-                    imageId: `shot_${shot.shot_id}_edit_${Date.now()}`,
-                    base64Data: imgPart.inlineData.data
-                });
-                console.log(`Saved new image to: ${newImageUrl}`);
-            }
+            const newImageUrl = await saveMedia(
+                `shot_${shot.shot_id}_edit_${Date.now()}`,
+                imgPart.inlineData.data
+            );
+            console.log(`Saved new image to: ${newImageUrl}`);
 
             // STEP 2: Update the Metadata JSON to match the new visual
             const metaPrompt = `

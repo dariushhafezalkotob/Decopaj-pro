@@ -52,3 +52,11 @@ const ProjectSchema = new Schema({
 }, { timestamps: true });
 
 export const Project = mongoose.model('Project', ProjectSchema);
+
+const MediaSchema = new Schema({
+    id: { type: String, required: true, unique: true },
+    data: { type: String, required: true }, // Base64
+    mimeType: { type: String, default: 'image/png' }
+}, { timestamps: true });
+
+export const Media = mongoose.model('Media', MediaSchema);

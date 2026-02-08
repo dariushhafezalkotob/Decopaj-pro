@@ -9,6 +9,7 @@ import connectDB from './db';
 import authRoutes from './routes/auth';
 import projectRoutes from './routes/projects';
 import aiRoutes from './routes/ai';
+import { getMedia } from './services/mediaService';
 
 dotenv.config();
 
@@ -61,6 +62,19 @@ server.decorate("authenticate", async function (request: any, reply: any) {
 server.register(authRoutes, { prefix: '/api/auth' });
 server.register(projectRoutes, { prefix: '/api/projects' });
 server.register(aiRoutes, { prefix: '/api/ai' });
+
+// Public Media serving route
+server.get('/api/media/:mediaId', async (request: any, reply) => {
+    const { mediaId } = request.params;
+    const media = await getMedia(mediaId);
+
+    if (!media) {
+        return reply.code(404).send({ message: "Media not found" });
+    }
+
+    const buffer = Buffer.from(media.data, 'base64');
+    reply.type(media.mimeType || 'image/png').send(buffer);
+});
 
 const start = async () => {
     try {

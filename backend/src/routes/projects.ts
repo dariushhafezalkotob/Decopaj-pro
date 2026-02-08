@@ -1,19 +1,18 @@
 
 import { FastifyInstance } from 'fastify';
 import { Project } from '../models';
-import { saveProjectImage } from '../services/fileService';
+import { saveMedia } from '../services/mediaService';
 
 const processProjectImages = async (projectName: string, data: any) => {
     // Process global cast
     if (data.globalCast) {
         for (const entity of data.globalCast) {
             if (entity.imageData && entity.imageData.startsWith('data:image')) {
-                entity.imageData = await saveProjectImage({
-                    projectName,
-                    sequenceTitle: 'global_assets',
-                    imageId: entity.id,
-                    base64Data: entity.imageData
-                });
+                entity.imageData = await saveMedia(
+                    `global_asset_${entity.id}`,
+                    entity.imageData,
+                    entity.mimeType || 'image/png'
+                );
             }
         }
     }
@@ -25,12 +24,11 @@ const processProjectImages = async (projectName: string, data: any) => {
             if (seq.assets) {
                 for (const asset of seq.assets) {
                     if (asset.imageData && asset.imageData.startsWith('data:image')) {
-                        asset.imageData = await saveProjectImage({
-                            projectName,
-                            sequenceTitle: seq.title,
-                            imageId: asset.id,
-                            base64Data: asset.imageData
-                        });
+                        asset.imageData = await saveMedia(
+                            `seq_asset_${asset.id}`,
+                            asset.imageData,
+                            asset.mimeType || 'image/png'
+                        );
                     }
                 }
             }
@@ -38,12 +36,10 @@ const processProjectImages = async (projectName: string, data: any) => {
             if (seq.shots) {
                 for (const shot of seq.shots) {
                     if (shot.image_url && shot.image_url.startsWith('data:image')) {
-                        shot.image_url = await saveProjectImage({
-                            projectName,
-                            sequenceTitle: seq.title,
-                            imageId: `shot_${shot.shot_id}`,
-                            base64Data: shot.image_url
-                        });
+                        shot.image_url = await saveMedia(
+                            `shot_${shot.shot_id}`,
+                            shot.image_url
+                        );
                     }
                 }
             }
