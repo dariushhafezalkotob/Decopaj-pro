@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Project, Sequence, ShotPlan, ImageSize, AppState, Entity } from '../types';
-import { identifyEntities, performFullDecopaj, generateShotImage, editShotImage } from '../services/geminiService';
+import { identifyEntities, performFullDecopaj, analyzeCustomShot, generateShotImage, editShotImage } from '../services/geminiService';
 import { getProjects, createProject, updateProject, deleteProject, logout, BACKEND_URL } from '../services/api';
 import { ShotCard } from './ShotCard';
 
@@ -381,6 +381,69 @@ const MainApp: React.FC = () => {
                     } : s)
                 } : p)
             }));
+        }
+    };
+
+    const handleInsertShot = async (index: number) => {
+        if (!activeProject || !activeSequence) return;
+        const description = prompt("Describe the shot to insert:");
+        if (!description) return;
+
+        setState(prev => ({ ...prev, isAnalyzing: true }));
+
+        const allAssets = [...activeProject.globalCast, ...activeSequence.assets];
+
+        try {
+            const shotAnalysis = await analyzeCustomShot(description, allAssets);
+
+            // Insert into sequence with loading state
+            // Generate a unique shot_id to avoid collisions
+            const uniqueShotId = `custom_${Date.now()}`;
+            const newShot: ShotPlan = { ...shotAnalysis, shot_id: uniqueShotId, loading: true };
+
+            setState(prev => ({
+                ...prev,
+                isAnalyzing: false,
+                isGeneratingImages: true,
+                projects: prev.projects.map(p => p.id === prev.activeProjectId ? {
+                    ...p,
+                    sequences: p.sequences.map(s => s.id === prev.activeSequenceId ? {
+                        ...s,
+                        shots: [
+                            ...s.shots.slice(0, index),
+                            newShot,
+                            ...s.shots.slice(index)
+                        ]
+                    } : s)
+                } : p)
+            }));
+
+            // Generate the image
+            const imageUrl = await generateShotImage(
+                newShot,
+                state.imageSize,
+                allAssets,
+                activeProject.name,
+                activeSequence.title,
+                activeProject.id,
+                activeSequence.id
+            );
+
+            // Update shot with image
+            setState(prev => ({
+                ...prev,
+                isGeneratingImages: false,
+                projects: prev.projects.map(p => p.id === prev.activeProjectId ? {
+                    ...p,
+                    sequences: p.sequences.map(s => s.id === prev.activeSequenceId ? {
+                        ...s,
+                        shots: s.shots.map(sh => sh.shot_id === newShot.shot_id ? { ...sh, image_url: imageUrl, loading: false } : sh)
+                    } : s)
+                } : p)
+            }));
+
+        } catch (err: any) {
+            setState(prev => ({ ...prev, isAnalyzing: false, isGeneratingImages: false, error: err.message }));
         }
     };
 
@@ -792,14 +855,49 @@ const MainApp: React.FC = () => {
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 pb-32 print:grid-cols-1 print:gap-12 print:pb-0">
-                            {activeSequence.shots.map(shot => (
-                                <ShotCard
-                                    key={shot.shot_id}
-                                    shot={shot}
-                                    onRetry={() => handleRetryShot(shot.shot_id)}
-                                    onEdit={(prompt) => handleEditShot(shot.shot_id, prompt)}
-                                />
+                            {/* Insert at beginning */}
+                            <div className="md:col-span-2 lg:col-span-3 -mb-4 flex justify-center">
+                                <button
+                                    onClick={() => handleInsertShot(0)}
+                                    className="group flex items-center space-x-2 bg-zinc-900/50 hover:bg-amber-500/10 border border-zinc-800 hover:border-amber-500/50 px-4 py-2 rounded-full transition-all"
+                                >
+                                    <svg className="w-4 h-4 text-zinc-600 group-hover:text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
+                                    <span className="text-[10px] font-black uppercase tracking-widest text-zinc-500 group-hover:text-amber-500">Insert Shot #1</span>
+                                </button>
+                            </div>
+
+                            {activeSequence.shots.map((shot, idx) => (
+                                <React.Fragment key={shot.shot_id}>
+                                    <ShotCard
+                                        shot={shot}
+                                        onRetry={() => handleRetryShot(shot.shot_id)}
+                                        onEdit={(prompt) => handleEditShot(shot.shot_id, prompt)}
+                                    />
+                                    {/* Insert button after each shot */}
+                                    {idx < activeSequence.shots.length - 1 && (
+                                        <div className="md:col-span-2 lg:col-span-3 -my-2 flex justify-center h-4">
+                                            <button
+                                                onClick={() => handleInsertShot(idx + 1)}
+                                                className="group opacity-0 hover:opacity-100 flex items-center space-x-2 bg-zinc-950 border border-zinc-800 hover:border-amber-500/50 px-3 py-1 rounded-full transition-all scale-75 hover:scale-100 z-10"
+                                            >
+                                                <svg className="w-3 h-3 text-zinc-600 group-hover:text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
+                                                <span className="text-[8px] font-black uppercase tracking-widest text-zinc-500 group-hover:text-amber-500">Insert between {idx + 1} & {idx + 2}</span>
+                                            </button>
+                                        </div>
+                                    )}
+                                </React.Fragment>
                             ))}
+
+                            {/* Insert at the end */}
+                            <div className="md:col-span-2 lg:col-span-3 -mt-4 flex justify-center">
+                                <button
+                                    onClick={() => handleInsertShot(activeSequence.shots.length)}
+                                    className="group flex items-center space-x-2 bg-zinc-900/50 hover:bg-amber-500/10 border border-zinc-800 hover:border-amber-500/50 px-4 py-2 rounded-full transition-all"
+                                >
+                                    <svg className="w-4 h-4 text-zinc-600 group-hover:text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
+                                    <span className="text-[10px] font-black uppercase tracking-widest text-zinc-500 group-hover:text-amber-500">Append New Shot</span>
+                                </button>
+                            </div>
                         </div>
                     </div>
                 )}

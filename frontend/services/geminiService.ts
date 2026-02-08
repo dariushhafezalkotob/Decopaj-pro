@@ -1,6 +1,6 @@
 
 import { ShotPlan, ImageSize, Entity, AnalysisResponse, EntityIdentificationResponse, VisualBreakdown } from "../types";
-import { identifyEntitiesProxy, analyzeScriptProxy, generateImageProxy, editShotProxy } from "./api";
+import { identifyEntitiesProxy, analyzeScriptProxy, analyzeCustomShotProxy, generateImageProxy, editShotProxy } from "./api";
 
 // STAGE 1: Identify additional locations and items, respecting the global cast
 export const identifyEntities = async (script: string, globalCast: Entity[]): Promise<EntityIdentificationResponse> => {
@@ -10,6 +10,10 @@ export const identifyEntities = async (script: string, globalCast: Entity[]): Pr
 // STAGE 2: Perform full cinematic breakdown using casted assets
 export const performFullDecopaj = async (script: string, assets: Entity[]): Promise<AnalysisResponse> => {
     return await analyzeScriptProxy(script, assets);
+};
+
+export const analyzeCustomShot = async (description: string, assets: Entity[]): Promise<ShotPlan> => {
+    return await analyzeCustomShotProxy(description, assets);
 };
 
 export const generateShotImage = async (

@@ -123,6 +123,16 @@ export const analyzeScriptProxy = async (script: string, assets: any[]) => {
     return await res.json();
 };
 
+export const analyzeCustomShotProxy = async (description: string, assets: any[]) => {
+    const res = await fetch(`${API_URL}/ai/analyze-custom-shot`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({ description, assets })
+    });
+    if (!res.ok) throw new Error("Custom Shot Analysis Failed");
+    return await res.json();
+};
+
 export const generateImageProxy = async (shot: any, size: string, assets: any[], projectName: string, sequenceTitle: string, projectId: string, sequenceId: string) => {
     console.log(`Starting image generation for shot ${shot.shot_id}...`);
     const startTime = Date.now();

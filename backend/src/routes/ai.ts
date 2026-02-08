@@ -259,6 +259,116 @@ export default async function aiRoutes(server: FastifyInstance) {
         return JSON.parse(response.text || '{"shots": []}');
     });
 
+    server.post('/analyze-custom-shot', async (request: any, reply) => {
+        const { description, assets } = request.body;
+        const ai = getAI();
+
+        const mappingText = assets.map((a: any) => `- ${a.name} (${a.type}): use "${a.refTag}"`).join('\n');
+
+        const prompt = `
+      You are a cinematic director. Analyze the following manual shot description and create a technical cinematic breakdown.
+      
+      USER DESCRIPTION: "${description}"
+
+      ASSET MAPPING TABLE (CRITICAL):
+      ${mappingText}
+
+      INSTRUCTIONS:
+      1. Create a detailed Visual Breakdown for this single shot.
+      2. CRITICAL: Use the "image X" ref tags from the mapping table above for the "reference_image" fields of characters and objects.
+      3. If the user mentions a character or object from the mapping table, you MUST use its refTag.
+      4. If the user describes a location that matches one in the mapping table, use that location's details.
+
+      Return a single ShotPlan object.
+    `;
+
+        const response = await ai.generate({
+            prompt,
+            responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                    shot_id: { type: Type.STRING },
+                    plan_type: { type: Type.STRING },
+                    action_segment: { type: Type.STRING },
+                    relevant_entities: { type: Type.ARRAY, items: { type: Type.STRING } },
+                    visual_breakdown: {
+                        type: Type.OBJECT,
+                        properties: {
+                            scene: {
+                                type: Type.OBJECT,
+                                properties: {
+                                    environment: { type: Type.OBJECT, properties: { location_type: { type: Type.STRING }, description: { type: Type.STRING } }, required: ["location_type", "description"] },
+                                    time: { type: Type.STRING },
+                                    mood: { type: Type.STRING },
+                                    color_palette: { type: Type.STRING }
+                                },
+                                required: ["environment", "time", "mood", "color_palette"]
+                            },
+                            characters: {
+                                type: Type.ARRAY,
+                                items: {
+                                    type: Type.OBJECT,
+                                    properties: {
+                                        name: { type: Type.STRING },
+                                        reference_image: { type: Type.STRING },
+                                        position: { type: Type.STRING },
+                                        appearance: { type: Type.OBJECT, properties: { description: { type: Type.STRING }, expression: { type: Type.STRING } }, required: ["description", "expression"] },
+                                        actions: { type: Type.STRING },
+                                        lighting_effect: { type: Type.STRING }
+                                    },
+                                    required: ["name", "reference_image", "position", "appearance", "actions", "lighting_effect"]
+                                }
+                            },
+                            objects: {
+                                type: Type.ARRAY,
+                                items: {
+                                    type: Type.OBJECT,
+                                    properties: {
+                                        name: { type: Type.STRING },
+                                        reference_image: { type: Type.STRING },
+                                        details: { type: Type.STRING },
+                                        action: { type: Type.STRING }
+                                    },
+                                    required: ["name", "details"]
+                                }
+                            },
+                            framing_composition: {
+                                type: Type.OBJECT,
+                                properties: {
+                                    shot_type: { type: Type.STRING },
+                                    framing: { type: Type.STRING },
+                                    perspective: { type: Type.STRING }
+                                },
+                                required: ["shot_type", "framing", "perspective"]
+                            },
+                            camera: {
+                                type: Type.OBJECT,
+                                properties: {
+                                    lens: { type: Type.OBJECT, properties: { focal_length_mm: { type: Type.NUMBER }, type: { type: Type.STRING } }, required: ["focal_length_mm", "type"] },
+                                    settings: { type: Type.OBJECT, properties: { aperture: { type: Type.STRING }, focus: { type: Type.STRING } }, required: ["aperture", "focus"] }
+                                },
+                                required: ["lens", "settings"]
+                            },
+                            lighting: {
+                                type: Type.OBJECT,
+                                properties: {
+                                    key: { type: Type.STRING },
+                                    quality: { type: Type.STRING },
+                                    color_contrast: { type: Type.STRING }
+                                },
+                                required: ["key", "quality", "color_contrast"]
+                            }
+                        },
+                        required: ["scene", "characters", "camera", "lighting", "framing_composition"]
+                    }
+                },
+                required: ["shot_id", "plan_type", "visual_breakdown", "relevant_entities"]
+            }
+        });
+
+        return JSON.parse(response.text || '{}');
+    });
+
     // 3. Generate Image
     server.post('/generate-image', async (request: any, reply) => {
         const { shot, size, assets, projectName, sequenceTitle, projectId, sequenceId } = request.body;
