@@ -8,6 +8,36 @@ import path from 'path';
 export default async function aiRoutes(server: FastifyInstance) {
 
     const getAI = () => new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+    const mimeType = 'image/png';
+
+    const resolveImageResource = (input: string) => {
+        if (!input) return null;
+
+        // Handle local file path (e.g., /public/shots/...)
+        const publicMatch = input.match(/\/public\/(.+)$/);
+        if (publicMatch) {
+            const relPath = `public/${publicMatch[1]}`;
+            const filePath = path.join(process.cwd(), relPath);
+            if (fs.existsSync(filePath)) {
+                return {
+                    data: fs.readFileSync(filePath).toString('base64'),
+                    mimeType
+                };
+            }
+            console.error(`Local file NOT found: ${filePath}`);
+        }
+
+        // Handle Data URL
+        if (input.includes('base64,')) {
+            return {
+                data: input.split('base64,')[1],
+                mimeType: input.split(';')[0].split(':')[1] || mimeType
+            };
+        }
+
+        // Assume raw base64 or other string we can't process as file
+        return { data: input, mimeType };
+    };
 
     // 0. Health check (Public)
     server.get('/health', async () => {
@@ -207,15 +237,17 @@ export default async function aiRoutes(server: FastifyInstance) {
         const model = 'gemini-3-pro-image-preview';
 
         const locationAsset = assets.find((a: any) => a.type === 'location' && shot.relevant_entities.includes(a.name));
-        if (locationAsset?.imageData) {
-            parts.push({ inlineData: { data: locationAsset.imageData.split(',')[1], mimeType: locationAsset.mimeType || 'image/png' } });
+        const locRes = resolveImageResource(locationAsset?.imageData);
+        if (locRes) {
+            parts.push({ inlineData: { data: locRes.data, mimeType: locRes.mimeType } });
             parts.push({ text: `ENVIRONMENT REFERENCE [${locationAsset.refTag}]: ${locationAsset.name}. ${locationAsset.description}` });
         }
 
         shot.visual_breakdown.characters.forEach((charShot: any) => {
             const asset = assets.find((a: any) => a.refTag === charShot.reference_image) || assets.find((a: any) => a.name === charShot.name);
-            if (asset?.imageData) {
-                parts.push({ inlineData: { data: asset.imageData.split(',')[1], mimeType: asset.mimeType || 'image/png' } });
+            const charRes = resolveImageResource(asset?.imageData);
+            if (charRes) {
+                parts.push({ inlineData: { data: charRes.data, mimeType: charRes.mimeType } });
                 parts.push({
                     text: `CHARACTER IDENTITY [${charShot.reference_image}]: "${charShot.name}".
         MANDATORY FACIAL FEATURES: Use the attached reference image for this character.
@@ -294,23 +326,10 @@ export default async function aiRoutes(server: FastifyInstance) {
 
         console.log(`Editing shot: ${shot.shot_id}, Original: ${typeof originalBase64 === 'string' ? originalBase64.substring(0, 50) : 'not a string'}...`);
 
-        let rawBase64 = originalBase64 || '';
-
-        // Handle both relative paths (/public/...) and full URLs (http://.../public/...)
-        const publicMatch = typeof rawBase64 === 'string' ? rawBase64.match(/\/public\/(.+)$/) : null;
-        if (publicMatch) {
-            const relPath = `public/${publicMatch[1]}`;
-            const filePath = path.join(process.cwd(), relPath);
-            console.log(`Local file detected: ${filePath}`);
-            if (fs.existsSync(filePath)) {
-                rawBase64 = fs.readFileSync(filePath).toString('base64');
-            } else {
-                console.error(`File NOT found at: ${filePath}`);
-                throw new Error(`Original image file not found on server at: ${relPath}`);
-            }
-        }
-
-        const base64Data = rawBase64.includes(',') ? rawBase64.split(',')[1] : rawBase64;
+        const imageRes = resolveImageResource(originalBase64);
+        if (!imageRes) throw new Error("No original image data provided.");
+        const base64Data = imageRes.data;
+        const currentMimeType = imageRes.mimeType;
 
         // STEP 1: Generate the new visual
         const genPromptText = `
@@ -331,7 +350,7 @@ export default async function aiRoutes(server: FastifyInstance) {
                 model: 'gemini-3-pro-image-preview',
                 contents: {
                     parts: [
-                        { inlineData: { data: base64Data, mimeType } },
+                        { inlineData: { data: base64Data, mimeType: currentMimeType } },
                         { text: genPromptText }
                     ]
                 },
