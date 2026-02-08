@@ -325,7 +325,7 @@ export default async function aiRoutes(server: FastifyInstance) {
   `;
 
         try {
-            console.log(`Calling Gemini (${model}) to EDIT shot ${shot.shot_id}...`);
+            console.log(`Calling Gemini (gemini-3-pro-image-preview) to EDIT shot ${shot.shot_id}...`);
             const startTime = Date.now();
             const imgResponse = await ai.models.generateContent({
                 model: 'gemini-3-pro-image-preview',
@@ -345,11 +345,10 @@ export default async function aiRoutes(server: FastifyInstance) {
             }
 
             const imgPart = imgResponse.candidates?.[0]?.content?.parts?.find((p: any) => p.inlineData);
-
-            const imgPart = imgResponse.candidates?.[0]?.content?.parts?.find((p: any) => p.inlineData);
             if (!imgPart?.inlineData?.data) {
-                console.error("Gemini failed to return image data in imgResponse:", JSON.stringify(imgResponse, null, 2));
-                throw new Error("Visual update failed.");
+                const finishReason = imgResponse.candidates?.[0]?.finishReason;
+                console.error(`Gemini failed to return image data. Reason: ${finishReason}`, JSON.stringify(imgResponse, null, 2));
+                throw new Error(finishReason === 'SAFETY' ? "Edit blocked by safety filters." : "Visual update failed.");
             }
 
             console.log("Gemini image generation successful.");
