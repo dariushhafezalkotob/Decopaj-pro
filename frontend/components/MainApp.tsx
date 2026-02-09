@@ -389,6 +389,8 @@ const MainApp: React.FC = () => {
             } : p)
         }));
 
+        const allAssets = [...activeProject.globalCast, ...activeSequence.assets];
+
         try {
             const updateData = await editShotImage(
                 activeSequence.shots[shotIdx].image_url!,
@@ -397,7 +399,8 @@ const MainApp: React.FC = () => {
                 activeProject.name,
                 activeSequence.title,
                 activeProject.id,
-                activeSequence.id
+                activeSequence.id,
+                allAssets
             );
 
             setState(prev => ({

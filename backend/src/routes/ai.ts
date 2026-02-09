@@ -473,7 +473,7 @@ export default async function aiRoutes(server: FastifyInstance) {
 
     // 4. Edit Shot
     server.post('/edit-shot', async (request: any, reply) => {
-        const { originalBase64, editPrompt, shot, projectName, sequenceTitle, projectId, sequenceId } = request.body;
+        const { originalBase64, editPrompt, shot, projectName, sequenceTitle, projectId, sequenceId, assets } = request.body;
         const ai = getAI();
         const mimeType = 'image/png';
 
@@ -531,10 +531,16 @@ export default async function aiRoutes(server: FastifyInstance) {
             console.log(`Saved new image to: ${newImageUrl}`);
 
             // STEP 2: Update the Metadata JSON to match the new visual
+            const safeAssets = assets || [];
+            const assetMapText = safeAssets.map((a: any) => `- ${a.name} (${a.type}): USE REF TAG "${a.refTag}"`).join('\n');
+
             const metaPrompt = `
       You are a professional Director of Photography. 
       I have just edited a film shot with this instruction: "${editPrompt}".
       
+      MANDATORY PRODUCTION ASSETS (Mapping table):
+      ${assetMapText}
+
       Here is the ORIGINAL technical JSON for that shot:
       ${JSON.stringify(shot.visual_breakdown)}
       
@@ -542,6 +548,11 @@ export default async function aiRoutes(server: FastifyInstance) {
       - If the instruction was "Make it moonlight", update lighting.key and color_palette.
       - If the instruction was "Zoom in more", update framing_composition.shot_type and focal_length_mm.
       - If the instruction was "Make him angry", update characters[].appearance.expression.
+      
+      CRITICAL RULES FOR ENTITY REFERENCES:
+      1. For characters and objects, you MUST maintain their "reference_image" field using the correct "image X" tag from the mapping table.
+      2. DO NOT change a reference_image tag unless a character/object is being completely replaced by another specific entity from the mapping table.
+      3. Never replace a refTag (like "image 2") with a description (like "image of Red").
       
       MANDATORY: Return the FULL and COMPLETE updated JSON object following the structure provided.
     `;

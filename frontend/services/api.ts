@@ -159,14 +159,14 @@ export const generateImageProxy = async (shot: any, size: string, assets: any[],
     }
 };
 
-export const editShotProxy = async (originalBase64: string, editPrompt: string, shot: any, projectName: string, sequenceTitle: string, projectId: string, sequenceId: string) => {
+export const editShotProxy = async (originalBase64: string, editPrompt: string, shot: any, projectName: string, sequenceTitle: string, projectId: string, sequenceId: string, assets: any[]) => {
     console.log(`Starting shot edit for shot ${shot.shot_id}...`);
     const startTime = Date.now();
     try {
         const res = await fetch(`${API_URL}/ai/edit-shot`, {
             method: 'POST',
             headers: getHeaders(),
-            body: JSON.stringify({ originalBase64, editPrompt, shot, projectName, sequenceTitle, projectId, sequenceId })
+            body: JSON.stringify({ originalBase64, editPrompt, shot, projectName, sequenceTitle, projectId, sequenceId, assets })
         });
         const duration = (Date.now() - startTime) / 1000;
         console.log(`Edit shot response for ${shot.shot_id} received in ${duration}s:`, res.status);

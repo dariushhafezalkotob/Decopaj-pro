@@ -35,7 +35,8 @@ export const editShotImage = async (
     projectName: string,
     sequenceTitle: string,
     projectId: string,
-    sequenceId: string
+    sequenceId: string,
+    assets: any[]
 ): Promise<{ image_url: string, visual_breakdown: VisualBreakdown }> => {
-    return await editShotProxy(originalBase64, editPrompt, shot, projectName, sequenceTitle, projectId, sequenceId);
+    return await editShotProxy(originalBase64, editPrompt, shot, projectName, sequenceTitle, projectId, sequenceId, assets);
 };
