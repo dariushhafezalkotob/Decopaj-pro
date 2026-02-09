@@ -47,7 +47,7 @@ const ProjectSchema = new Schema({
     id: String,
     name: String,
     user_id: { type: Schema.Types.ObjectId, ref: 'Admin' }, // Multi-tenancy support
-    globalCast: [EntitySchema],
+    globalAssets: [EntitySchema],
     sequences: [SequenceSchema]
 }, { timestamps: true });
 

@@ -4,12 +4,12 @@ import { Project } from '../models';
 import { saveMedia } from '../services/mediaService';
 
 const processProjectImages = async (projectId: string, data: any) => {
-    // Process global cast
-    if (data.globalCast) {
-        for (const entity of data.globalCast) {
+    // Process global assets
+    if (data.globalAssets) {
+        for (const entity of data.globalAssets) {
             if (entity.imageData && entity.imageData.startsWith('data:image')) {
                 entity.imageData = await saveMedia(
-                    `${projectId}_cast_${entity.id}`,
+                    `${projectId}_asset_${entity.id}`,
                     entity.imageData,
                     entity.mimeType || 'image/png'
                 );

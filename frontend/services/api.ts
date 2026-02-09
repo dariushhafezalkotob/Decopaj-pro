@@ -67,18 +67,14 @@ export const createProject = async (project: any) => {
 export const updateProject = async (id: string, project: any) => {
     try {
         const url = `${API_URL}/projects/${id}`;
-        if (project.sequences.length > 0) {
-            console.log(`Syncing project ${id} (${project.name})...`);
-        }
+        console.log(`Syncing project ${id} (${project.name})...`);
         const res = await fetch(url, {
             method: 'PUT',
             headers: getHeaders(),
             body: JSON.stringify(project)
         });
 
-        if (project.sequences.length > 0) {
-            console.log(`Sync response for ${id}:`, res.status);
-        }
+        console.log(`Sync response for ${id}:`, res.status);
         if (res.status === 401) {
             window.location.href = '/login';
             return;
