@@ -204,7 +204,7 @@ const MainApp: React.FC = () => {
                     projects: projects.map((p: any) => ({
                         ...p,
                         id: p.id || p._id,
-                        globalAssets: p.globalAssets || p.globalCast || []
+                        globalAssets: (p.globalAssets && p.globalAssets.length > 0) ? p.globalAssets : (p.globalCast || [])
                     })),
                     activeProjectId: initialNav.activeProjectId,
                     activeSequenceId: initialNav.activeSequenceId,
