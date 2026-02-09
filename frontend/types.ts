@@ -14,7 +14,7 @@ export interface CharacterShotDetail {
 
 export interface VisualBreakdown {
     scene: {
-        environment: { location_type: string; description: string };
+        environment: { location_type: string; description: string; reference_image?: string };
         time: string;
         mood: string;
         color_palette: string;

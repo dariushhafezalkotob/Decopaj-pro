@@ -152,7 +152,7 @@ export default async function aiRoutes(server: FastifyInstance) {
       INSTRUCTIONS:
       1. Break the scene into logical Shots/Plans.
       2. For each shot, list the characters present in that frame.
-      3. CRITICAL: For every character AND every object/item, you MUST populate the "reference_image" field with the exact "image X" ref tag from the mapping table above if a matching asset exists.
+      3. CRITICAL: For every character, object/item, AND environment/location, you MUST populate the "reference_image" field with the exact "image X" ref tag from the mapping table above if a matching asset exists.
       4. Provide detailed physical positioning and lighting effects specifically for those characters.
       5. Technical camera specs should be professional (e.g., 35mm lens, f/2.8, shallow depth of field).
       
@@ -182,7 +182,7 @@ export default async function aiRoutes(server: FastifyInstance) {
                                             scene: {
                                                 type: Type.OBJECT,
                                                 properties: {
-                                                    environment: { type: Type.OBJECT, properties: { location_type: { type: Type.STRING }, description: { type: Type.STRING } }, required: ["location_type", "description"] },
+                                                    environment: { type: Type.OBJECT, properties: { location_type: { type: Type.STRING }, description: { type: Type.STRING }, reference_image: { type: Type.STRING } }, required: ["location_type", "description"] },
                                                     time: { type: Type.STRING },
                                                     mood: { type: Type.STRING },
                                                     color_palette: { type: Type.STRING }
@@ -275,8 +275,8 @@ export default async function aiRoutes(server: FastifyInstance) {
 
       INSTRUCTIONS:
       1. Create a detailed Visual Breakdown for this single shot.
-      2. CRITICAL: Use the "image X" ref tags from the mapping table above for the "reference_image" fields of characters and objects.
-      3. If the user mentions a character or object from the mapping table, you MUST use its refTag.
+      2. CRITICAL: Use the "image X" ref tags from the mapping table above for the "reference_image" fields of characters, objects, and environment locations.
+      3. If the user mentions a character, object, or location from the mapping table, you MUST use its refTag.
       4. If the user describes a location that matches one in the mapping table, use that location's details.
 
       Return a single ShotPlan object.
@@ -300,7 +300,7 @@ export default async function aiRoutes(server: FastifyInstance) {
                                 scene: {
                                     type: Type.OBJECT,
                                     properties: {
-                                        environment: { type: Type.OBJECT, properties: { location_type: { type: Type.STRING }, description: { type: Type.STRING } }, required: ["location_type", "description"] },
+                                        environment: { type: Type.OBJECT, properties: { location_type: { type: Type.STRING }, description: { type: Type.STRING }, reference_image: { type: Type.STRING } }, required: ["location_type", "description"] },
                                         time: { type: Type.STRING },
                                         mood: { type: Type.STRING },
                                         color_palette: { type: Type.STRING }
@@ -382,7 +382,8 @@ export default async function aiRoutes(server: FastifyInstance) {
         // High resolution model selection
         const model = 'gemini-3-pro-image-preview';
 
-        const locationAsset = assets.find((a: any) => a.type === 'location' && shot.relevant_entities.includes(a.name));
+        const envRefTag = shot.visual_breakdown.scene.environment.reference_image;
+        const locationAsset = assets.find((a: any) => a.refTag === envRefTag) || assets.find((a: any) => a.type === 'location' && shot.relevant_entities.includes(a.name));
         const locRes = await resolveImageResource(locationAsset?.imageData);
         if (locRes) {
             parts.push({ inlineData: { data: locRes.data, mimeType: locRes.mimeType } });
@@ -565,7 +566,7 @@ export default async function aiRoutes(server: FastifyInstance) {
                     responseSchema: {
                         type: Type.OBJECT,
                         properties: {
-                            scene: { type: Type.OBJECT, properties: { environment: { type: Type.OBJECT, properties: { location_type: { type: Type.STRING }, description: { type: Type.STRING } } }, time: { type: Type.STRING }, mood: { type: Type.STRING }, color_palette: { type: Type.STRING } }, required: ["environment", "time", "mood", "color_palette"] },
+                            scene: { type: Type.OBJECT, properties: { environment: { type: Type.OBJECT, properties: { location_type: { type: Type.STRING }, description: { type: Type.STRING }, reference_image: { type: Type.STRING } } }, time: { type: Type.STRING }, mood: { type: Type.STRING }, color_palette: { type: Type.STRING } }, required: ["environment", "time", "mood", "color_palette"] },
                             characters: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, reference_image: { type: Type.STRING }, position: { type: Type.STRING }, appearance: { type: Type.OBJECT, properties: { description: { type: Type.STRING }, expression: { type: Type.STRING } } }, actions: { type: Type.STRING }, lighting_effect: { type: Type.STRING } }, required: ["name", "reference_image", "position", "appearance", "actions", "lighting_effect"] } },
                             objects: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, reference_image: { type: Type.STRING }, details: { type: Type.STRING }, action: { type: Type.STRING } }, required: ["name", "details"] } },
                             framing_composition: { type: Type.OBJECT, properties: { shot_type: { type: Type.STRING }, framing: { type: Type.STRING }, perspective: { type: Type.STRING } }, required: ["shot_type", "framing", "perspective"] },
