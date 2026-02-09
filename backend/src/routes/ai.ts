@@ -531,74 +531,9 @@ export default async function aiRoutes(server: FastifyInstance) {
             );
             console.log(`Saved new image to: ${newImageUrl}`);
 
-            // STEP 2: Update the Metadata JSON to match the new visual
-            const safeAssets = assets || [];
-            const assetMapText = safeAssets.map((a: any) => `- ${a.name} (${a.type}): USE REF TAG "${a.refTag}"`).join('\n');
-
-            const metaPrompt = `
-      You are a professional Director of Photography. 
-      I have just edited a film shot with this instruction: "${editPrompt}".
-      
-      MANDATORY PRODUCTION ASSETS (Mapping table):
-      ${assetMapText}
-
-      Here is the ORIGINAL technical JSON for that shot:
-      ${JSON.stringify(shot.visual_breakdown)}
-      
-      TASK: Update the JSON to reflect the changes from the edit instruction.
-      - If the instruction was "Make it moonlight", update lighting.key and color_palette.
-      - If the instruction was "Zoom in more", update framing_composition.shot_type and focal_length_mm.
-      - If the instruction was "Make him angry", update characters[].appearance.expression.
-      
-      CRITICAL RULES FOR ENTITY REFERENCES:
-      1. For characters and objects, you MUST maintain their "reference_image" field using the correct "image X" tag from the mapping table.
-      2. DO NOT change a reference_image tag unless a character/object is being completely replaced by another specific entity from the mapping table.
-      3. Never replace a refTag (like "image 2") with a description (like "image of Red").
-      
-      MANDATORY: Return the FULL and COMPLETE updated JSON object following the structure provided.
-    `;
-
-            const metaResponse = await ai.models.generateContent({
-                model: 'gemini-3-flash-preview',
-                contents: metaPrompt,
-                config: {
-                    responseMimeType: "application/json",
-                    responseSchema: {
-                        type: Type.OBJECT,
-                        properties: {
-                            scene: { type: Type.OBJECT, properties: { environment: { type: Type.OBJECT, properties: { location_type: { type: Type.STRING }, description: { type: Type.STRING }, reference_image: { type: Type.STRING } } }, time: { type: Type.STRING }, mood: { type: Type.STRING }, color_palette: { type: Type.STRING } }, required: ["environment", "time", "mood", "color_palette"] },
-                            characters: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, reference_image: { type: Type.STRING }, position: { type: Type.STRING }, appearance: { type: Type.OBJECT, properties: { description: { type: Type.STRING }, expression: { type: Type.STRING } } }, actions: { type: Type.STRING }, lighting_effect: { type: Type.STRING } }, required: ["name", "reference_image", "position", "appearance", "actions", "lighting_effect"] } },
-                            objects: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, reference_image: { type: Type.STRING }, details: { type: Type.STRING }, action: { type: Type.STRING } }, required: ["name", "details"] } },
-                            framing_composition: { type: Type.OBJECT, properties: { shot_type: { type: Type.STRING }, framing: { type: Type.STRING }, perspective: { type: Type.STRING } }, required: ["shot_type", "framing", "perspective"] },
-                            camera: { type: Type.OBJECT, properties: { lens: { type: Type.OBJECT, properties: { focal_length_mm: { type: Type.NUMBER }, type: { type: Type.STRING } }, required: ["focal_length_mm", "type"] }, settings: { type: Type.OBJECT, properties: { aperture: { type: Type.STRING }, focus: { type: Type.STRING } }, required: ["aperture", "focus"] } }, required: ["lens", "settings"] },
-                            lighting: { type: Type.OBJECT, properties: { key: { type: Type.STRING }, quality: { type: Type.STRING }, color_contrast: { type: Type.STRING } }, required: ["key", "quality", "color_contrast"] }
-                        },
-                        required: ["scene", "characters", "camera", "lighting", "framing_composition"]
-                    }
-                }
-            });
-
-            console.log("Gemini metadata update response received.");
-            let updatedMetadata: any = {};
-            try {
-                updatedMetadata = JSON.parse(metaResponse.text || '{}');
-            } catch (pErr) {
-                console.error("Failed to parse metadata JSON:", metaResponse.text);
-            }
-
-            // Defensive merge: If for some reason the response is missing parts, fallback to original shot data
-            const mergedMetadata = {
-                ...shot.visual_breakdown,
-                ...updatedMetadata,
-                scene: { ...shot.visual_breakdown.scene, ...(updatedMetadata.scene || {}) },
-                camera: { ...shot.visual_breakdown.camera, ...(updatedMetadata.camera || {}) },
-                lighting: { ...shot.visual_breakdown.lighting, ...(updatedMetadata.lighting || {}) },
-                framing_composition: { ...shot.visual_breakdown.framing_composition, ...(updatedMetadata.framing_composition || {}) }
-            };
-
             return {
                 image_url: newImageUrl,
-                visual_breakdown: mergedMetadata
+                visual_breakdown: shot.visual_breakdown // Keep original
             };
 
         } catch (err: any) {

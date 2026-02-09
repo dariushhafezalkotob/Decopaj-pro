@@ -59,7 +59,7 @@ export const ShotCard: React.FC<ShotCardProps> = ({ shot, onRetry, onEdit, onDel
                             onClick={onRetry}
                             className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg text-xs font-bold transition-colors border border-zinc-700"
                         >
-                            Retry Render
+                            Regenerate
                         </button>
                     </div>
                 )}
@@ -127,10 +127,17 @@ export const ShotCard: React.FC<ShotCardProps> = ({ shot, onRetry, onEdit, onDel
                                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
                                     </button>
                                     <button
+                                        onClick={onRetry}
+                                        className="text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full border border-zinc-700 text-zinc-500 hover:border-zinc-500 hover:text-zinc-300 transition-all print:hidden"
+                                        title="Regenerate with same data"
+                                    >
+                                        Regenerate
+                                    </button>
+                                    <button
                                         onClick={() => setIsEditingMode(!isEditingMode)}
                                         className={`text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full border transition-all print:hidden ${isEditingMode ? 'border-amber-500 text-amber-500 bg-amber-500/10' : 'border-zinc-700 text-zinc-500 hover:border-zinc-500 hover:text-zinc-300'}`}
                                     >
-                                        {isEditingMode ? 'Cancel Edit' : 'Edit Frame'}
+                                        {isEditingMode ? 'Cancel' : 'Modify'}
                                     </button>
                                 </>
                             )}
