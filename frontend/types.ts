@@ -103,4 +103,8 @@ export interface AppState {
     error: string | null;
     insertionIndex: number | null;
     insertionPrompt: string;
+    showGlobalPicker: boolean;
+    pickerTargetId: string | null;
+    pickerSearch: string;
+    pickerCategory: 'all' | 'character' | 'location' | 'item';
 }

@@ -181,7 +181,9 @@ const MainApp: React.FC = () => {
         insertionIndex: null,
         insertionPrompt: '',
         showGlobalPicker: false,
-        pickerTargetId: null
+        pickerTargetId: null,
+        pickerSearch: '',
+        pickerCategory: 'all' as 'all' | 'character' | 'location' | 'item'
     });
 
     // Initial Load from Backend
@@ -382,6 +384,8 @@ const MainApp: React.FC = () => {
             ...prev,
             showGlobalPicker: false,
             pickerTargetId: null,
+            pickerSearch: '',
+            pickerCategory: 'all',
             projects: prev.projects.map(p => p.id === prev.activeProjectId ? {
                 ...p,
                 sequences: p.sequences.map(s => s.id === prev.activeSequenceId ? {
@@ -1046,40 +1050,87 @@ const MainApp: React.FC = () => {
                         {/* GLOBAL PICKER MODAL */}
                         {state.showGlobalPicker && (
                             <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 animate-in fade-in">
-                                <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setState(p => ({ ...p, showGlobalPicker: false }))}></div>
-                                <div className="relative bg-zinc-900 border border-zinc-800 rounded-3xl w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col shadow-2xl">
-                                    <div className="p-6 border-b border-zinc-800 flex justify-between items-center">
-                                        <h3 className="text-xl font-bold">Select Global Asset</h3>
-                                        <button onClick={() => setState(p => ({ ...p, showGlobalPicker: false }))} className="text-zinc-500 hover:text-white transition-colors">
-                                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
-                                        </button>
+                                <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setState(p => ({ ...p, showGlobalPicker: false, pickerSearch: '', pickerCategory: 'all' }))}></div>
+                                <div className="relative bg-zinc-900 border border-zinc-800 rounded-3xl w-full max-w-2xl max-h-[85vh] overflow-hidden flex flex-col shadow-2xl">
+                                    <div className="p-6 border-b border-zinc-800">
+                                        <div className="flex justify-between items-center mb-6">
+                                            <h3 className="text-xl font-bold">Select Global Asset</h3>
+                                            <button onClick={() => setState(p => ({ ...p, showGlobalPicker: false, pickerSearch: '', pickerCategory: 'all' }))} className="text-zinc-500 hover:text-white transition-colors">
+                                                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                                            </button>
+                                        </div>
+
+                                        <div className="space-y-4">
+                                            {/* Search Bar */}
+                                            <div className="relative">
+                                                <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                                                <input
+                                                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl pl-10 pr-4 py-2.5 text-sm outline-none focus:border-amber-500 transition-all"
+                                                    placeholder="Search assets by name..."
+                                                    value={state.pickerSearch}
+                                                    onChange={(e) => setState(p => ({ ...p, pickerSearch: e.target.value }))}
+                                                />
+                                            </div>
+
+                                            {/* Category Tabs */}
+                                            <div className="flex p-1 bg-zinc-950 border border-zinc-800 rounded-xl">
+                                                {[
+                                                    { id: 'all', label: 'All Assets' },
+                                                    { id: 'character', label: 'Characters' },
+                                                    { id: 'location', label: 'Locations' },
+                                                    { id: 'item', label: 'Props/Items' }
+                                                ].map(cat => (
+                                                    <button
+                                                        key={cat.id}
+                                                        onClick={() => setState(p => ({ ...p, pickerCategory: cat.id as any }))}
+                                                        className={`flex-1 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-lg transition-all ${state.pickerCategory === cat.id ? 'bg-amber-500 text-zinc-950 shadow-lg' : 'text-zinc-500 hover:text-zinc-300'}`}
+                                                    >
+                                                        {cat.label}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
                                     </div>
-                                    <div className="flex-1 overflow-y-auto p-6 grid grid-cols-2 gap-4 custom-scrollbar">
-                                        {activeProject?.globalAssets.length === 0 && (
-                                            <p className="col-span-full text-center py-12 text-zinc-600 font-bold uppercase tracking-widest text-xs">No global assets defined yet.</p>
-                                        )}
-                                        {activeProject?.globalAssets.map(ga => (
-                                            <div
-                                                key={ga.id}
-                                                onClick={() => state.pickerTargetId && handlePickGlobal(state.pickerTargetId, ga)}
-                                                className="bg-zinc-950 border border-zinc-800 p-4 rounded-2xl cursor-pointer hover:border-amber-500 transition-all flex items-center space-x-4 group"
-                                            >
-                                                <div className="w-16 h-16 bg-zinc-900 rounded-lg overflow-hidden flex-shrink-0 border border-zinc-800">
-                                                    {ga.imageData ? (
-                                                        <img src={ga.imageData.startsWith('/') ? `${BACKEND_URL}${ga.imageData}` : ga.imageData} className="w-full h-full object-cover" alt="" />
-                                                    ) : (
-                                                        <div className="w-full h-full flex items-center justify-center text-zinc-800 uppercase font-black text-[8px]">{ga.type}</div>
-                                                    )}
-                                                </div>
-                                                <div className="flex-1 overflow-hidden">
-                                                    <h4 className="font-bold text-sm truncate group-hover:text-amber-500">{ga.name || 'Unnamed Asset'}</h4>
-                                                    <div className="flex items-center space-x-2 mt-1">
-                                                        <span className="text-[8px] font-black uppercase tracking-widest text-zinc-600">{ga.type}</span>
-                                                        <span className="text-[8px] font-black uppercase tracking-widest text-zinc-700">{ga.refTag}</span>
+
+                                    <div className="flex-1 overflow-y-auto p-6 grid grid-cols-2 gap-4 custom-scrollbar bg-zinc-900/50">
+                                        {(() => {
+                                            const filtered = (activeProject?.globalAssets || []).filter(ga => {
+                                                const matchesSearch = !state.pickerSearch || ga.name.toLowerCase().includes(state.pickerSearch.toLowerCase());
+                                                const matchesCategory = state.pickerCategory === 'all' || ga.type === state.pickerCategory;
+                                                return matchesSearch && matchesCategory;
+                                            });
+
+                                            if (filtered.length === 0) {
+                                                return (
+                                                    <p className="col-span-full text-center py-12 text-zinc-600 font-bold uppercase tracking-widest text-xs">
+                                                        {activeProject?.globalAssets.length === 0 ? "No global assets defined yet." : "No assets match your search."}
+                                                    </p>
+                                                );
+                                            }
+
+                                            return filtered.map(ga => (
+                                                <div
+                                                    key={ga.id}
+                                                    onClick={() => state.pickerTargetId && handlePickGlobal(state.pickerTargetId, ga)}
+                                                    className="bg-zinc-950 border border-zinc-800 p-4 rounded-2xl cursor-pointer hover:border-amber-500 transition-all flex items-center space-x-4 group"
+                                                >
+                                                    <div className="w-16 h-16 bg-zinc-900 rounded-lg overflow-hidden flex-shrink-0 border border-zinc-800">
+                                                        {ga.imageData ? (
+                                                            <img src={ga.imageData.startsWith('/') ? `${BACKEND_URL}${ga.imageData}` : ga.imageData} className="w-full h-full object-cover" alt="" />
+                                                        ) : (
+                                                            <div className="w-full h-full flex items-center justify-center text-zinc-800 uppercase font-black text-[8px]">{ga.type}</div>
+                                                        )}
+                                                    </div>
+                                                    <div className="flex-1 overflow-hidden">
+                                                        <h4 className="font-bold text-sm truncate group-hover:text-amber-500">{ga.name || 'Unnamed Asset'}</h4>
+                                                        <div className="flex items-center space-x-2 mt-1">
+                                                            <span className={`text-[8px] font-black uppercase tracking-widest ${ga.type === 'character' ? 'text-amber-500' : ga.type === 'location' ? 'text-emerald-500' : 'text-blue-500'}`}>{ga.type}</span>
+                                                            <span className="text-[8px] font-black uppercase tracking-widest text-zinc-700">{ga.refTag}</span>
+                                                        </div>
                                                     </div>
                                                 </div>
-                                            </div>
-                                        ))}
+                                            ));
+                                        })()}
                                     </div>
                                 </div>
                             </div>
