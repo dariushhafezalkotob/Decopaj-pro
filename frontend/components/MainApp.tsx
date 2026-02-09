@@ -16,6 +16,7 @@ interface AssetCardProps {
     onUpload: (file: File) => void;
     onDelete?: () => void;
     onPickGlobal?: () => void;
+    onPromote?: () => void;
 }
 
 const AssetCard: React.FC<AssetCardProps> = ({
@@ -24,7 +25,8 @@ const AssetCard: React.FC<AssetCardProps> = ({
     onUpdateName,
     onUpload,
     onDelete,
-    onPickGlobal
+    onPickGlobal,
+    onPromote
 }) => (
     <div className="bg-zinc-900 border border-zinc-800 p-4 rounded-2xl space-y-3 transition-all hover:border-zinc-700 group/asset">
         <div className="flex justify-between items-center text-[10px] font-bold uppercase tracking-widest mb-1">
@@ -44,6 +46,11 @@ const AssetCard: React.FC<AssetCardProps> = ({
                 )}
             </div>
             <span className="text-zinc-600 whitespace-nowrap">{entity.refTag}</span>
+            {entity.id.startsWith('global') || entity.id.startsWith('scene-link') || isGlobal ? (
+                <div className="absolute -top-1 -right-1 bg-amber-500 text-zinc-950 p-1 rounded-full shadow-lg" title="Global Asset">
+                    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path d="M10 12a2 2 0 100-4 2 2 0 000 4z" /><path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd" /></svg>
+                </div>
+            ) : null}
         </div>
         <div
             onClick={() => document.getElementById(`upload-${entity.id}`)?.click()}
@@ -72,12 +79,22 @@ const AssetCard: React.FC<AssetCardProps> = ({
             />
         </div>
         {onPickGlobal && (
-            <button
-                onClick={(e) => { e.stopPropagation(); onPickGlobal(); }}
-                className="w-full py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 text-[8px] font-black uppercase tracking-widest rounded-lg transition-colors border border-zinc-700/50"
-            >
-                Pick from Global Library
-            </button>
+            <div className="flex flex-col space-y-2">
+                <button
+                    onClick={(e) => { e.stopPropagation(); onPickGlobal(); }}
+                    className="w-full py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 text-[8px] font-black uppercase tracking-widest rounded-lg transition-colors border border-zinc-700/50"
+                >
+                    Pick from Global Library
+                </button>
+                {onPromote && entity.imageData && (
+                    <button
+                        onClick={(e) => { e.stopPropagation(); onPromote(); }}
+                        className="w-full py-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-500 text-[8px] font-black uppercase tracking-widest rounded-lg transition-colors border border-amber-500/20"
+                    >
+                        Save to Master Library
+                    </button>
+                )}
+            </div>
         )}
     </div>
 );
@@ -377,6 +394,32 @@ const MainApp: React.FC = () => {
                         description: globalAsset.description
                     } : a)
                 } : s)
+            } : p)
+        }));
+    };
+
+    const handlePromoteToGlobal = (entity: Entity) => {
+        if (!activeProject) return;
+
+        // Check if already exists in global (by name)
+        const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '').trim();
+        const normName = normalize(entity.name);
+        if (activeProject.globalAssets.some(ga => normalize(ga.name) === normName)) {
+            alert("An asset with this name already exists in the Master Library.");
+            return;
+        }
+
+        const newGlobalAsset: Entity = {
+            ...entity,
+            id: `global-${Date.now()}`,
+            refTag: `image ${(activeProject.globalAssets || []).length + 1}`
+        };
+
+        setState(prev => ({
+            ...prev,
+            projects: prev.projects.map(p => p.id === prev.activeProjectId ? {
+                ...p,
+                globalAssets: [...(p.globalAssets || []), newGlobalAsset]
             } : p)
         }));
     };
@@ -982,6 +1025,7 @@ const MainApp: React.FC = () => {
                                     onUpload={(file) => handleAssetUpload(a.id, file, false)}
                                     onDelete={() => setState(prev => ({ ...prev, projects: prev.projects.map(p => p.id === prev.activeProjectId ? { ...p, sequences: p.sequences.map(s => s.id === prev.activeSequenceId ? { ...s, assets: s.assets.filter(asset => asset.id !== a.id) } : s) } : p) }))}
                                     onPickGlobal={() => setState(prev => ({ ...prev, showGlobalPicker: true, pickerTargetId: a.id }))}
+                                    onPromote={() => handlePromoteToGlobal(a)}
                                 />
                             ))}
                         </div>
