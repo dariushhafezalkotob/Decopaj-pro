@@ -950,18 +950,25 @@ const MainApp: React.FC = () => {
                                 </React.Fragment>
                             ))}
 
-                            {/* Add button at the end if none active */}
-                            {state.insertionIndex === null && (
-                                <button
-                                    onClick={() => handleInsertShot(activeSequence.shots.length)}
-                                    className="aspect-square rounded-3xl border-2 border-dashed border-zinc-800 hover:border-amber-500/50 hover:bg-amber-500/5 transition-all flex flex-col items-center justify-center group"
-                                >
-                                    <div className="bg-zinc-900 p-4 rounded-full mb-4 group-hover:scale-110 transition-transform">
-                                        <svg className="w-8 h-8 text-zinc-600 group-hover:text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
+                            {/* Sequence Script Card */}
+                            <div className="aspect-square rounded-3xl border border-zinc-800 bg-zinc-900/30 p-8 flex flex-col relative overflow-hidden group">
+                                <div className="absolute top-0 left-0 w-1 h-full bg-amber-500/50"></div>
+                                <div className="flex items-center justify-between mb-6">
+                                    <h3 className="text-[10px] font-black uppercase tracking-widest text-amber-500">Original Script</h3>
+                                    <svg className="w-4 h-4 text-zinc-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                                </div>
+                                <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
+                                    <p className="text-[11px] font-bold text-zinc-400 leading-relaxed whitespace-pre-wrap italic">
+                                        "{activeSequence.script}"
+                                    </p>
+                                </div>
+                                <div className="mt-6 pt-6 border-t border-zinc-800/50">
+                                    <div className="flex items-center space-x-2 opacity-30 group-hover:opacity-100 transition-opacity">
+                                        <div className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></div>
+                                        <span className="text-[8px] font-black uppercase tracking-widest text-zinc-500">End of Scene</span>
                                     </div>
-                                    <span className="text-[10px] font-black uppercase tracking-widest text-zinc-500 group-hover:text-amber-500">Add New Plan</span>
-                                </button>
-                            )}
+                                </div>
+                            </div>
                         </div>
                     </div>
                 )}
