@@ -184,7 +184,11 @@ const MainApp: React.FC = () => {
 
                 setState(prev => ({
                     ...prev,
-                    projects: projects.map((p: any) => ({ ...p, id: p.id || p._id })),
+                    projects: projects.map((p: any) => ({
+                        ...p,
+                        id: p.id || p._id,
+                        globalAssets: p.globalAssets || p.globalCast || []
+                    })),
                     activeProjectId: initialNav.activeProjectId,
                     activeSequenceId: initialNav.activeSequenceId,
                     currentStep: (initialNav.currentStep as any) || 'dashboard',
@@ -271,14 +275,14 @@ const MainApp: React.FC = () => {
         const prefix = type === 'character' ? 'char' : type === 'location' ? 'loc' : 'obj';
         const newAsset: Entity = {
             id: `${prefix}-${Date.now()}`,
-            refTag: `image ${activeProject.globalAssets.length + 1}`,
+            refTag: `image ${(activeProject.globalAssets || []).length + 1}`,
             name: '',
             type,
             description: ''
         };
         setState(prev => ({
             ...prev,
-            projects: prev.projects.map(p => p.id === prev.activeProjectId ? { ...p, globalAssets: [...p.globalAssets, newAsset] } : p)
+            projects: prev.projects.map(p => p.id === prev.activeProjectId ? { ...p, globalAssets: [...(p.globalAssets || []), newAsset] } : p)
         }));
     };
 
@@ -311,16 +315,16 @@ const MainApp: React.FC = () => {
         try {
             const result = await identifyEntities(activeSequence.script, activeProject.globalAssets);
             const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '').trim();
-            const existingNames = new Set(activeProject.globalAssets.map(c => normalize(c.name)));
+            const existingNames = new Set((activeProject.globalAssets || []).map(c => normalize(c.name)));
 
             const sceneAssets: Entity[] = [];
-            let currentImgCount = activeProject.globalAssets.length;
+            let currentImgCount = (activeProject.globalAssets || []).length;
 
             result.entities.forEach((ent, idx) => {
                 const normalizedName = normalize(ent.name);
 
                 // Check for match in global assets
-                const globalMatch = activeProject.globalAssets.find(ga => normalize(ga.name) === normalizedName);
+                const globalMatch = (activeProject.globalAssets || []).find(ga => normalize(ga.name) === normalizedName);
 
                 if (globalMatch) {
                     // LINK: Use the global asset's data directly
@@ -750,7 +754,7 @@ const MainApp: React.FC = () => {
                                     <div className="mt-6 flex items-center space-x-4 text-zinc-500 text-[10px] font-black uppercase tracking-widest relative z-10">
                                         <span>{p.sequences.length} Sequences</span>
                                         <span className="w-1 h-1 bg-zinc-800 rounded-full"></span>
-                                        <span>{p.globalAssets.length} Assets</span>
+                                        <span>{(p.globalAssets || []).length} Assets</span>
                                     </div>
                                     <div className="absolute bottom-4 right-8 flex items-center space-x-4 opacity-0 group-hover:opacity-100 transition-all">
                                         <button
@@ -780,14 +784,14 @@ const MainApp: React.FC = () => {
                                 <div className="h-px bg-zinc-800 flex-1"></div>
                             </div>
                             <div className="grid grid-cols-2 md:grid-cols-5 gap-6">
-                                {activeProject?.globalAssets.filter(a => a.type === 'character').map(c => (
+                                {(activeProject?.globalAssets || []).filter(a => a.type === 'character').map(c => (
                                     <AssetCard
                                         key={c.id}
                                         entity={c}
                                         isGlobal={true}
-                                        onUpdateName={(val) => setState(p => ({ ...p, projects: p.projects.map(proj => proj.id === p.activeProjectId ? { ...proj, globalAssets: proj.globalAssets.map(char => char.id === c.id ? { ...char, name: val } : char) } : proj) }))}
+                                        onUpdateName={(val) => setState(p => ({ ...p, projects: p.projects.map(proj => proj.id === p.activeProjectId ? { ...proj, globalAssets: (proj.globalAssets || []).map(char => char.id === c.id ? { ...char, name: val } : char) } : proj) }))}
                                         onUpload={(file) => handleAssetUpload(c.id, file, true)}
-                                        onDelete={() => setState(p => ({ ...p, projects: p.projects.map(proj => proj.id === p.activeProjectId ? { ...proj, globalAssets: proj.globalAssets.filter(a => a.id !== c.id) } : proj) }))}
+                                        onDelete={() => setState(p => ({ ...p, projects: p.projects.map(proj => proj.id === p.activeProjectId ? { ...proj, globalAssets: (proj.globalAssets || []).filter(a => a.id !== c.id) } : proj) }))}
                                     />
                                 ))}
                                 <button onClick={() => handleAddGlobalAsset('character')} className="aspect-square border-2 border-dashed border-zinc-900 rounded-2xl flex flex-col items-center justify-center text-zinc-800 hover:border-amber-500/50 hover:text-amber-500/70 transition-all group bg-zinc-950/30">
@@ -804,14 +808,14 @@ const MainApp: React.FC = () => {
                                 <div className="h-px bg-zinc-800 flex-1"></div>
                             </div>
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                                {activeProject?.globalAssets.filter(a => a.type === 'location').map(l => (
+                                {(activeProject?.globalAssets || []).filter(a => a.type === 'location').map(l => (
                                     <AssetCard
                                         key={l.id}
                                         entity={l}
                                         isGlobal={true}
-                                        onUpdateName={(val) => setState(p => ({ ...p, projects: p.projects.map(proj => proj.id === p.activeProjectId ? { ...proj, globalAssets: proj.globalAssets.map(loc => loc.id === l.id ? { ...loc, name: val } : loc) } : proj) }))}
+                                        onUpdateName={(val) => setState(p => ({ ...p, projects: p.projects.map(proj => proj.id === p.activeProjectId ? { ...proj, globalAssets: (proj.globalAssets || []).map(loc => loc.id === l.id ? { ...loc, name: val } : loc) } : proj) }))}
                                         onUpload={(file) => handleAssetUpload(l.id, file, true)}
-                                        onDelete={() => setState(p => ({ ...p, projects: p.projects.map(proj => proj.id === p.activeProjectId ? { ...proj, globalAssets: proj.globalAssets.filter(a => a.id !== l.id) } : proj) }))}
+                                        onDelete={() => setState(p => ({ ...p, projects: p.projects.map(proj => proj.id === p.activeProjectId ? { ...proj, globalAssets: (proj.globalAssets || []).filter(a => a.id !== l.id) } : proj) }))}
                                     />
                                 ))}
                                 <button onClick={() => handleAddGlobalAsset('location')} className="aspect-video border-2 border-dashed border-zinc-900 rounded-2xl flex flex-col items-center justify-center text-zinc-800 hover:border-emerald-500/50 hover:text-emerald-500/70 transition-all group bg-zinc-950/30">
@@ -828,14 +832,14 @@ const MainApp: React.FC = () => {
                                 <div className="h-px bg-zinc-800 flex-1"></div>
                             </div>
                             <div className="grid grid-cols-2 md:grid-cols-5 gap-6">
-                                {activeProject?.globalAssets.filter(a => a.type === 'item').map(i => (
+                                {(activeProject?.globalAssets || []).filter(a => a.type === 'item').map(i => (
                                     <AssetCard
                                         key={i.id}
                                         entity={i}
                                         isGlobal={true}
-                                        onUpdateName={(val) => setState(p => ({ ...p, projects: p.projects.map(proj => proj.id === p.activeProjectId ? { ...proj, globalAssets: proj.globalAssets.map(item => item.id === i.id ? { ...item, name: val } : item) } : proj) }))}
+                                        onUpdateName={(val) => setState(p => ({ ...p, projects: p.projects.map(proj => proj.id === p.activeProjectId ? { ...proj, globalAssets: (proj.globalAssets || []).map(item => item.id === i.id ? { ...item, name: val } : item) } : proj) }))}
                                         onUpload={(file) => handleAssetUpload(i.id, file, true)}
-                                        onDelete={() => setState(p => ({ ...p, projects: p.projects.map(proj => proj.id === p.activeProjectId ? { ...proj, globalAssets: proj.globalAssets.filter(a => a.id !== i.id) } : proj) }))}
+                                        onDelete={() => setState(p => ({ ...p, projects: p.projects.map(proj => proj.id === p.activeProjectId ? { ...proj, globalAssets: (proj.globalAssets || []).filter(a => a.id !== i.id) } : proj) }))}
                                     />
                                 ))}
                                 <button onClick={() => handleAddGlobalAsset('item')} className="aspect-square border-2 border-dashed border-zinc-900 rounded-2xl flex flex-col items-center justify-center text-zinc-800 hover:border-blue-500/50 hover:text-blue-500/70 transition-all group bg-zinc-950/30">
