@@ -89,14 +89,42 @@ export const ShotCard: React.FC<ShotCardProps> = ({ shot, onRetry, onEdit }) => 
                 <div className="mb-4">
                     <div className="flex items-center justify-between mb-1">
                         <h3 className="text-lg font-bold text-white print:text-zinc-900 print:text-3xl">{shot.plan_type}</h3>
-                        {shot.image_url && !shot.loading && !shot.editing && (
-                            <button
-                                onClick={() => setIsEditingMode(!isEditingMode)}
-                                className={`text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full border transition-all print:hidden ${isEditingMode ? 'border-amber-500 text-amber-500 bg-amber-500/10' : 'border-zinc-700 text-zinc-500 hover:border-zinc-500 hover:text-zinc-300'}`}
-                            >
-                                {isEditingMode ? 'Cancel Edit' : 'Edit Frame'}
-                            </button>
-                        )}
+                        <div className="flex items-center space-x-2">
+                            {shot.image_url && !shot.loading && !shot.editing && (
+                                <>
+                                    <button
+                                        onClick={async () => {
+                                            try {
+                                                const fileName = `shot_${shot.shot_id}.png`;
+                                                const fullUrl = shot.image_url?.startsWith('/') ? `${BACKEND_URL}${shot.image_url}` : shot.image_url;
+                                                const res = await fetch(fullUrl!);
+                                                const blob = await res.blob();
+                                                const url = window.URL.createObjectURL(blob);
+                                                const link = document.createElement('a');
+                                                link.href = url;
+                                                link.download = fileName;
+                                                document.body.appendChild(link);
+                                                link.click();
+                                                document.body.removeChild(link);
+                                                window.URL.revokeObjectURL(url);
+                                            } catch (err) {
+                                                console.error("Download failed", err);
+                                            }
+                                        }}
+                                        className="p-1.5 text-zinc-500 hover:text-amber-500 hover:bg-amber-500/10 rounded-full transition-all print:hidden"
+                                        title="Download Image"
+                                    >
+                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                                    </button>
+                                    <button
+                                        onClick={() => setIsEditingMode(!isEditingMode)}
+                                        className={`text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full border transition-all print:hidden ${isEditingMode ? 'border-amber-500 text-amber-500 bg-amber-500/10' : 'border-zinc-700 text-zinc-500 hover:border-zinc-500 hover:text-zinc-300'}`}
+                                    >
+                                        {isEditingMode ? 'Cancel Edit' : 'Edit Frame'}
+                                    </button>
+                                </>
+                            )}
+                        </div>
                     </div>
                     <p className="text-amber-500/90 text-[10px] mono uppercase tracking-wider font-bold print:text-zinc-600 print:text-sm">
                         {shot.camera_specs}
