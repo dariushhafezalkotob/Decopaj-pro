@@ -76,7 +76,7 @@ export interface Sequence {
 export interface Project {
     id: string;
     name: string;
-    globalCast: Entity[];
+    globalAssets: Entity[];
     sequences: Sequence[];
 }
 

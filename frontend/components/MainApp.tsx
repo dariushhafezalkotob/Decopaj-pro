@@ -14,25 +14,36 @@ interface AssetCardProps {
     isGlobal: boolean;
     onUpdateName: (val: string) => void;
     onUpload: (file: File) => void;
+    onDelete?: () => void;
+    onPickGlobal?: () => void;
 }
 
 const AssetCard: React.FC<AssetCardProps> = ({
     entity,
     isGlobal,
     onUpdateName,
-    onUpload
+    onUpload,
+    onDelete,
+    onPickGlobal
 }) => (
-    <div className="bg-zinc-900 border border-zinc-800 p-4 rounded-2xl space-y-3 transition-all hover:border-zinc-700">
+    <div className="bg-zinc-900 border border-zinc-800 p-4 rounded-2xl space-y-3 transition-all hover:border-zinc-700 group/asset">
         <div className="flex justify-between items-center text-[10px] font-bold uppercase tracking-widest mb-1">
-            {isGlobal ? (
-                <input
-                    className="bg-transparent border-b border-white/10 focus:border-amber-500 outline-none flex-1 text-amber-500 py-1"
-                    value={entity.name}
-                    onChange={(e) => onUpdateName(e.target.value)}
-                    placeholder="ENTER NAME..."
-                />
-            ) : <span className="text-zinc-400 truncate max-w-[120px]" title={entity.name}>{entity.name}</span>}
-            <span className="text-zinc-600 ml-2 whitespace-nowrap">{entity.refTag}</span>
+            <div className="flex items-center space-x-2 flex-1 overflow-hidden mr-2">
+                {isGlobal ? (
+                    <input
+                        className="bg-transparent border-b border-white/10 focus:border-amber-500 outline-none flex-1 text-amber-500 py-1"
+                        value={entity.name}
+                        onChange={(e) => onUpdateName(e.target.value)}
+                        placeholder="ENTER NAME..."
+                    />
+                ) : <span className="text-zinc-400 truncate" title={entity.name}>{entity.name}</span>}
+                {onDelete && (
+                    <button onClick={(e) => { e.stopPropagation(); onDelete(); }} className="text-zinc-600 hover:text-red-500 opacity-0 group-hover/asset:opacity-100 transition-opacity">
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                    </button>
+                )}
+            </div>
+            <span className="text-zinc-600 whitespace-nowrap">{entity.refTag}</span>
         </div>
         <div
             onClick={() => document.getElementById(`upload-${entity.id}`)?.click()}
@@ -60,6 +71,14 @@ const AssetCard: React.FC<AssetCardProps> = ({
                 onChange={(e) => e.target.files?.[0] && onUpload(e.target.files[0])}
             />
         </div>
+        {onPickGlobal && (
+            <button
+                onClick={(e) => { e.stopPropagation(); onPickGlobal(); }}
+                className="w-full py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 text-[8px] font-black uppercase tracking-widest rounded-lg transition-colors border border-zinc-700/50"
+            >
+                Pick from Global Library
+            </button>
+        )}
     </div>
 );
 
@@ -121,6 +140,8 @@ const MainApp: React.FC = () => {
         hasFileSystemAccess: boolean;
         isIframe: boolean;
         showDriveGuide: boolean;
+        showGlobalPicker: boolean;
+        pickerTargetId: string | null;
     }>({
         projects: [],
         activeProjectId: null,
@@ -141,7 +162,9 @@ const MainApp: React.FC = () => {
         isIframe: false,
         showDriveGuide: false,
         insertionIndex: null,
-        insertionPrompt: ''
+        insertionPrompt: '',
+        showGlobalPicker: false,
+        pickerTargetId: null
     });
 
     // Initial Load from Backend
@@ -226,7 +249,7 @@ const MainApp: React.FC = () => {
             const newProjData = {
                 id: `proj-${Date.now()}`,
                 name: state.newProjectName,
-                globalCast: [],
+                globalAssets: [],
                 sequences: []
             };
             const created = await createProject(newProjData);
@@ -243,18 +266,19 @@ const MainApp: React.FC = () => {
         }
     };
 
-    const handleAddGlobalCharacter = () => {
+    const handleAddGlobalAsset = (type: 'character' | 'location' | 'item' = 'character') => {
         if (!state.activeProjectId || !activeProject) return;
-        const newChar: Entity = {
-            id: `char-${Date.now()}`,
-            refTag: `image ${activeProject.globalCast.length + 1}`,
+        const prefix = type === 'character' ? 'char' : type === 'location' ? 'loc' : 'obj';
+        const newAsset: Entity = {
+            id: `${prefix}-${Date.now()}`,
+            refTag: `image ${activeProject.globalAssets.length + 1}`,
             name: '',
-            type: 'character',
+            type,
             description: ''
         };
         setState(prev => ({
             ...prev,
-            projects: prev.projects.map(p => p.id === prev.activeProjectId ? { ...p, globalCast: [...p.globalCast, newChar] } : p)
+            projects: prev.projects.map(p => p.id === prev.activeProjectId ? { ...p, globalAssets: [...p.globalAssets, newAsset] } : p)
         }));
     };
 
@@ -285,16 +309,27 @@ const MainApp: React.FC = () => {
         setState(prev => ({ ...prev, isIdentifying: true, error: null }));
 
         try {
-            const result = await identifyEntities(activeSequence.script, activeProject.globalCast);
+            const result = await identifyEntities(activeSequence.script, activeProject.globalAssets);
             const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '').trim();
-            const existingNames = new Set(activeProject.globalCast.map(c => normalize(c.name)));
+            const existingNames = new Set(activeProject.globalAssets.map(c => normalize(c.name)));
 
             const sceneAssets: Entity[] = [];
-            let currentImgCount = activeProject.globalCast.length;
+            let currentImgCount = activeProject.globalAssets.length;
 
             result.entities.forEach((ent, idx) => {
                 const normalizedName = normalize(ent.name);
-                if (!existingNames.has(normalizedName)) {
+
+                // Check for match in global assets
+                const globalMatch = activeProject.globalAssets.find(ga => normalize(ga.name) === normalizedName);
+
+                if (globalMatch) {
+                    // LINK: Use the global asset's data directly
+                    sceneAssets.push({
+                        ...globalMatch,
+                        id: `scene-link-${idx}-${Date.now()}` // Unique ID for the link instance in this sequence
+                    });
+                } else if (!existingNames.has(normalizedName)) {
+                    // NEW: Create a new sequence-specific asset
                     currentImgCount++;
                     sceneAssets.push({
                         id: `scene-entity-${idx}-${Date.now()}`,
@@ -321,6 +356,27 @@ const MainApp: React.FC = () => {
         }
     };
 
+    const handlePickGlobal = (sequenceAssetId: string, globalAsset: Entity) => {
+        setState(prev => ({
+            ...prev,
+            showGlobalPicker: false,
+            pickerTargetId: null,
+            projects: prev.projects.map(p => p.id === prev.activeProjectId ? {
+                ...p,
+                sequences: p.sequences.map(s => s.id === prev.activeSequenceId ? {
+                    ...s,
+                    assets: s.assets.map(a => a.id === sequenceAssetId ? {
+                        ...a,
+                        name: globalAsset.name,
+                        imageData: globalAsset.imageData,
+                        mimeType: globalAsset.mimeType,
+                        description: globalAsset.description
+                    } : a)
+                } : s)
+            } : p)
+        }));
+    };
+
     const handleRetryShot = async (shotId: string) => {
         if (!activeProject || !activeSequence) return;
         const shotIdx = activeSequence.shots.findIndex(s => s.shot_id === shotId);
@@ -337,7 +393,7 @@ const MainApp: React.FC = () => {
             } : p)
         }));
 
-        const allAssets = [...activeProject.globalCast, ...activeSequence.assets];
+        const allAssets = [...activeProject.globalAssets, ...activeSequence.assets];
         try {
             const imageUrl = await generateShotImage(
                 activeSequence.shots[shotIdx],
@@ -389,7 +445,7 @@ const MainApp: React.FC = () => {
             } : p)
         }));
 
-        const allAssets = [...activeProject.globalCast, ...activeSequence.assets];
+        const allAssets = [...activeProject.globalAssets, ...activeSequence.assets];
 
         try {
             const updateData = await editShotImage(
@@ -443,7 +499,7 @@ const MainApp: React.FC = () => {
 
         setState(prev => ({ ...prev, isAnalyzing: true }));
 
-        const allAssets = [...activeProject.globalCast, ...activeSequence.assets];
+        const allAssets = [...activeProject.globalAssets, ...activeSequence.assets];
 
         try {
             const shotAnalysis = await analyzeCustomShot(insertionPrompt, allAssets);
@@ -504,7 +560,7 @@ const MainApp: React.FC = () => {
         if (!activeProject || !activeSequence) return;
         setState(prev => ({ ...prev, isAnalyzing: true }));
 
-        const allAssets = [...activeProject.globalCast, ...activeSequence.assets];
+        const allAssets = [...activeProject.globalAssets, ...activeSequence.assets];
 
         try {
             const analysis = await performFullDecopaj(activeSequence.script, allAssets);
@@ -575,7 +631,7 @@ const MainApp: React.FC = () => {
                 ...prev,
                 projects: prev.projects.map(p => p.id === prev.activeProjectId ? {
                     ...p,
-                    globalCast: isGlobal ? p.globalCast.map(c => c.id === id ? { ...c, imageData, mimeType } : c) : p.globalCast,
+                    globalAssets: isGlobal ? p.globalAssets.map(c => c.id === id ? { ...c, imageData, mimeType } : c) : p.globalAssets,
                     sequences: !isGlobal ? p.sequences.map(s => s.id === prev.activeSequenceId ? {
                         ...s,
                         assets: s.assets.map(a => a.id === id ? { ...a, imageData, mimeType } : a)
@@ -694,7 +750,7 @@ const MainApp: React.FC = () => {
                                     <div className="mt-6 flex items-center space-x-4 text-zinc-500 text-[10px] font-black uppercase tracking-widest relative z-10">
                                         <span>{p.sequences.length} Sequences</span>
                                         <span className="w-1 h-1 bg-zinc-800 rounded-full"></span>
-                                        <span>{p.globalCast.length} Cast</span>
+                                        <span>{p.globalAssets.length} Assets</span>
                                     </div>
                                     <div className="absolute bottom-4 right-8 flex items-center space-x-4 opacity-0 group-hover:opacity-100 transition-all">
                                         <button
@@ -711,26 +767,84 @@ const MainApp: React.FC = () => {
                 )}
 
                 {state.currentStep === 'casting' && (
-                    <div className="max-w-4xl mx-auto space-y-10 animate-in fade-in">
+                    <div className="max-w-6xl mx-auto space-y-16 animate-in fade-in">
                         <div className="text-center">
-                            <h2 className="text-3xl font-bold mb-2">Global Project Casting</h2>
-                            <p className="text-zinc-500">Define key character visuals that will persist across every sequence in this project.</p>
+                            <h2 className="text-4xl font-black uppercase tracking-tighter mb-4">Master Project Library</h2>
+                            <p className="text-zinc-500 max-w-2xl mx-auto text-sm">Define recurring characters, locations, and props to maintain visual consistency across all sequences.</p>
                         </div>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-                            {activeProject?.globalCast.map(c => (
-                                <AssetCard
-                                    key={c.id}
-                                    entity={c}
-                                    isGlobal={true}
-                                    onUpdateName={(val) => setState(p => ({ ...p, projects: p.projects.map(proj => proj.id === p.activeProjectId ? { ...proj, globalCast: proj.globalCast.map(char => char.id === c.id ? { ...char, name: val } : char) } : proj) }))}
-                                    onUpload={(file) => handleAssetUpload(c.id, file, true)}
-                                />
-                            ))}
-                            <button onClick={handleAddGlobalCharacter} className="aspect-square border-2 border-dashed border-zinc-800 rounded-2xl flex flex-col items-center justify-center text-zinc-700 hover:border-amber-500 hover:text-amber-500 transition-all group">
-                                <svg className="w-8 h-8 mb-2 opacity-50 group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
-                                <span className="text-[10px] font-black uppercase tracking-widest">Add Actor</span>
-                            </button>
+
+                        {/* CHARACTERS SECTION */}
+                        <div className="space-y-6">
+                            <div className="flex items-center space-x-4">
+                                <h3 className="text-xs font-black uppercase tracking-[0.2em] text-amber-500">Global Cast</h3>
+                                <div className="h-px bg-zinc-800 flex-1"></div>
+                            </div>
+                            <div className="grid grid-cols-2 md:grid-cols-5 gap-6">
+                                {activeProject?.globalAssets.filter(a => a.type === 'character').map(c => (
+                                    <AssetCard
+                                        key={c.id}
+                                        entity={c}
+                                        isGlobal={true}
+                                        onUpdateName={(val) => setState(p => ({ ...p, projects: p.projects.map(proj => proj.id === p.activeProjectId ? { ...proj, globalAssets: proj.globalAssets.map(char => char.id === c.id ? { ...char, name: val } : char) } : proj) }))}
+                                        onUpload={(file) => handleAssetUpload(c.id, file, true)}
+                                        onDelete={() => setState(p => ({ ...p, projects: p.projects.map(proj => proj.id === p.activeProjectId ? { ...proj, globalAssets: proj.globalAssets.filter(a => a.id !== c.id) } : proj) }))}
+                                    />
+                                ))}
+                                <button onClick={() => handleAddGlobalAsset('character')} className="aspect-square border-2 border-dashed border-zinc-900 rounded-2xl flex flex-col items-center justify-center text-zinc-800 hover:border-amber-500/50 hover:text-amber-500/70 transition-all group bg-zinc-950/30">
+                                    <svg className="w-8 h-8 mb-2 opacity-30 group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
+                                    <span className="text-[9px] font-black uppercase tracking-widest">Add Actor</span>
+                                </button>
+                            </div>
                         </div>
+
+                        {/* LOCATIONS SECTION */}
+                        <div className="space-y-6">
+                            <div className="flex items-center space-x-4">
+                                <h3 className="text-xs font-black uppercase tracking-[0.2em] text-emerald-500">Global Locations</h3>
+                                <div className="h-px bg-zinc-800 flex-1"></div>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                {activeProject?.globalAssets.filter(a => a.type === 'location').map(l => (
+                                    <AssetCard
+                                        key={l.id}
+                                        entity={l}
+                                        isGlobal={true}
+                                        onUpdateName={(val) => setState(p => ({ ...p, projects: p.projects.map(proj => proj.id === p.activeProjectId ? { ...proj, globalAssets: proj.globalAssets.map(loc => loc.id === l.id ? { ...loc, name: val } : loc) } : proj) }))}
+                                        onUpload={(file) => handleAssetUpload(l.id, file, true)}
+                                        onDelete={() => setState(p => ({ ...p, projects: p.projects.map(proj => proj.id === p.activeProjectId ? { ...proj, globalAssets: proj.globalAssets.filter(a => a.id !== l.id) } : proj) }))}
+                                    />
+                                ))}
+                                <button onClick={() => handleAddGlobalAsset('location')} className="aspect-video border-2 border-dashed border-zinc-900 rounded-2xl flex flex-col items-center justify-center text-zinc-800 hover:border-emerald-500/50 hover:text-emerald-500/70 transition-all group bg-zinc-950/30">
+                                    <svg className="w-8 h-8 mb-2 opacity-30 group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
+                                    <span className="text-[9px] font-black uppercase tracking-widest">Register Scene/Location</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* OBJECTS SECTION */}
+                        <div className="space-y-6">
+                            <div className="flex items-center space-x-4">
+                                <h3 className="text-xs font-black uppercase tracking-[0.2em] text-blue-500">Key Props & Objects</h3>
+                                <div className="h-px bg-zinc-800 flex-1"></div>
+                            </div>
+                            <div className="grid grid-cols-2 md:grid-cols-5 gap-6">
+                                {activeProject?.globalAssets.filter(a => a.type === 'item').map(i => (
+                                    <AssetCard
+                                        key={i.id}
+                                        entity={i}
+                                        isGlobal={true}
+                                        onUpdateName={(val) => setState(p => ({ ...p, projects: p.projects.map(proj => proj.id === p.activeProjectId ? { ...proj, globalAssets: proj.globalAssets.map(item => item.id === i.id ? { ...item, name: val } : item) } : proj) }))}
+                                        onUpload={(file) => handleAssetUpload(i.id, file, true)}
+                                        onDelete={() => setState(p => ({ ...p, projects: p.projects.map(proj => proj.id === p.activeProjectId ? { ...proj, globalAssets: proj.globalAssets.filter(a => a.id !== i.id) } : proj) }))}
+                                    />
+                                ))}
+                                <button onClick={() => handleAddGlobalAsset('item')} className="aspect-square border-2 border-dashed border-zinc-900 rounded-2xl flex flex-col items-center justify-center text-zinc-800 hover:border-blue-500/50 hover:text-blue-500/70 transition-all group bg-zinc-950/30">
+                                    <svg className="w-8 h-8 mb-2 opacity-30 group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
+                                    <span className="text-[9px] font-black uppercase tracking-widest">Add Key Prop</span>
+                                </button>
+                            </div>
+                        </div>
+
                         <div className="flex justify-center pt-8">
                             <button
                                 onClick={() => setState(p => ({ ...p, currentStep: 'project-home' }))}
@@ -862,9 +976,53 @@ const MainApp: React.FC = () => {
                                     isGlobal={false}
                                     onUpdateName={() => { }}
                                     onUpload={(file) => handleAssetUpload(a.id, file, false)}
+                                    onDelete={() => setState(prev => ({ ...prev, projects: prev.projects.map(p => p.id === prev.activeProjectId ? { ...p, sequences: p.sequences.map(s => s.id === prev.activeSequenceId ? { ...s, assets: s.assets.filter(asset => asset.id !== a.id) } : s) } : p) }))}
+                                    onPickGlobal={() => setState(prev => ({ ...prev, showGlobalPicker: true, pickerTargetId: a.id }))}
                                 />
                             ))}
                         </div>
+
+                        {/* GLOBAL PICKER MODAL */}
+                        {state.showGlobalPicker && (
+                            <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 animate-in fade-in">
+                                <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setState(p => ({ ...p, showGlobalPicker: false }))}></div>
+                                <div className="relative bg-zinc-900 border border-zinc-800 rounded-3xl w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col shadow-2xl">
+                                    <div className="p-6 border-b border-zinc-800 flex justify-between items-center">
+                                        <h3 className="text-xl font-bold">Select Global Asset</h3>
+                                        <button onClick={() => setState(p => ({ ...p, showGlobalPicker: false }))} className="text-zinc-500 hover:text-white transition-colors">
+                                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                                        </button>
+                                    </div>
+                                    <div className="flex-1 overflow-y-auto p-6 grid grid-cols-2 gap-4 custom-scrollbar">
+                                        {activeProject?.globalAssets.length === 0 && (
+                                            <p className="col-span-full text-center py-12 text-zinc-600 font-bold uppercase tracking-widest text-xs">No global assets defined yet.</p>
+                                        )}
+                                        {activeProject?.globalAssets.map(ga => (
+                                            <div
+                                                key={ga.id}
+                                                onClick={() => state.pickerTargetId && handlePickGlobal(state.pickerTargetId, ga)}
+                                                className="bg-zinc-950 border border-zinc-800 p-4 rounded-2xl cursor-pointer hover:border-amber-500 transition-all flex items-center space-x-4 group"
+                                            >
+                                                <div className="w-16 h-16 bg-zinc-900 rounded-lg overflow-hidden flex-shrink-0 border border-zinc-800">
+                                                    {ga.imageData ? (
+                                                        <img src={ga.imageData.startsWith('/') ? `${BACKEND_URL}${ga.imageData}` : ga.imageData} className="w-full h-full object-cover" alt="" />
+                                                    ) : (
+                                                        <div className="w-full h-full flex items-center justify-center text-zinc-800 uppercase font-black text-[8px]">{ga.type}</div>
+                                                    )}
+                                                </div>
+                                                <div className="flex-1 overflow-hidden">
+                                                    <h4 className="font-bold text-sm truncate group-hover:text-amber-500">{ga.name || 'Unnamed Asset'}</h4>
+                                                    <div className="flex items-center space-x-2 mt-1">
+                                                        <span className="text-[8px] font-black uppercase tracking-widest text-zinc-600">{ga.type}</span>
+                                                        <span className="text-[8px] font-black uppercase tracking-widest text-zinc-700">{ga.refTag}</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                         <div className="flex space-x-6 pt-8">
                             <button onClick={() => setState(p => ({ ...p, currentStep: 'sequence-input' }))} className="px-10 py-4 bg-zinc-800 text-zinc-300 font-bold rounded-2xl hover:bg-zinc-700 transition-all">Adjust Script</button>
                             <button
