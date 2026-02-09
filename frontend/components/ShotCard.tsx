@@ -7,9 +7,10 @@ interface ShotCardProps {
     shot: ShotPlan;
     onRetry: () => void;
     onEdit: (prompt: string) => void;
+    onDelete?: () => void;
 }
 
-export const ShotCard: React.FC<ShotCardProps> = ({ shot, onRetry, onEdit }) => {
+export const ShotCard: React.FC<ShotCardProps> = ({ shot, onRetry, onEdit, onDelete }) => {
     const [showMeta, setShowMeta] = useState(false);
     const [showJson, setShowJson] = useState(false);
     const [isEditingMode, setIsEditingMode] = useState(false);
@@ -82,6 +83,15 @@ export const ShotCard: React.FC<ShotCardProps> = ({ shot, onRetry, onEdit }) => 
                     >
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                     </button>
+                    {onDelete && (
+                        <button
+                            onClick={(e) => { e.stopPropagation(); if (confirm('Are you sure you want to delete this shot?')) onDelete(); }}
+                            title="Delete Shot"
+                            className="bg-zinc-950/80 backdrop-blur-md w-8 h-8 rounded-full border border-white/10 flex items-center justify-center text-zinc-500 hover:text-red-500 hover:border-red-500/50 transition-all"
+                        >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                        </button>
+                    )}
                 </div>
             </div>
 

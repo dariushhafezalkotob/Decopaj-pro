@@ -603,6 +603,19 @@ const MainApp: React.FC = () => {
         }
     };
 
+    const handleDeleteShot = (shotId: string) => {
+        setState(prev => ({
+            ...prev,
+            projects: prev.projects.map(p => p.id === prev.activeProjectId ? {
+                ...p,
+                sequences: p.sequences.map(s => s.id === prev.activeSequenceId ? {
+                    ...s,
+                    shots: s.shots.filter(sh => sh.shot_id !== shotId)
+                } : s)
+            } : p)
+        }));
+    };
+
     const handleGenerateStoryboard = async () => {
         if (!activeProject || !activeSequence) return;
         setState(prev => ({ ...prev, isAnalyzing: true }));
@@ -1132,6 +1145,7 @@ const MainApp: React.FC = () => {
                                             shot={shot}
                                             onRetry={() => handleRetryShot(shot.shot_id)}
                                             onEdit={(prompt) => handleEditShot(shot.shot_id, prompt)}
+                                            onDelete={() => handleDeleteShot(shot.shot_id)}
                                         />
 
                                         {/* Hover "+" button for NEXT slot */}
