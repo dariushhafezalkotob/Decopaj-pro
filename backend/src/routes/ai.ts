@@ -70,10 +70,10 @@ export default async function aiRoutes(server: FastifyInstance) {
         return { data: input, mimeType };
     };
 
-    const generateImageSeedream = async (prompt: string, imageConfig?: any) => {
+    const generateImageSeedream = async (prompt: string, imageConfig?: any, modelPathOverride?: string) => {
         const apiKey = process.env.WAVESPEED_API_KEY;
-        // Use the model ID provided by the user, default to text-to-image variant if not edited
-        const modelPath = process.env.WAVESPEED_MODEL_PATH || 'bytedance/seedream-v4.5/sequential';
+        // Default to sequential for new generation, but allow override for editing
+        const modelPath = modelPathOverride || process.env.WAVESPEED_MODEL_PATH || 'bytedance/seedream-v4.5/sequential';
 
         if (!apiKey) {
             throw new Error("WAVESPEED_API_KEY is not configured.");
@@ -113,7 +113,7 @@ export default async function aiRoutes(server: FastifyInstance) {
 
         // Polling loop
         let attempts = 0;
-        const maxAttempts = 30; // 30 * 2s = 60s
+        const maxAttempts = 60; // 60 * 2s = 120s (SeaDream can take time)
         while (attempts < maxAttempts) {
             await new Promise(r => setTimeout(r, 2000));
             const statusResponse = await fetch(`https://api.wavespeed.ai/api/v3/predictions/${requestId}/result`, {
@@ -134,7 +134,10 @@ export default async function aiRoutes(server: FastifyInstance) {
 
             // Wavespeed status names might be 'succeeded', 'completed', etc.
             if (status === 'succeeded' || status === 'completed' || resultData.output_url || resultData.url) {
-                return resultData.output_url || resultData.url || (resultData.data && resultData.data[0]?.url);
+                const url = resultData.output_url || resultData.url || (resultData.data && resultData.data[0]?.url);
+                if (url) return url;
+                // If status is succeeded but url is missing, keep looping briefly or throw
+                console.warn(`Job ${requestId} marked ${status} but no URL found yet.`);
             }
             if (status === 'failed') {
                 throw new Error(`Wavespeed Job Failed: ${resultData.error || statusData.error || 'Unknown error'}`);
@@ -142,7 +145,7 @@ export default async function aiRoutes(server: FastifyInstance) {
             attempts++;
         }
 
-        throw new Error("Wavespeed generation timed out after 60 seconds.");
+        throw new Error("Wavespeed generation timed out after 120 seconds.");
     };
 
     // 0. Health check (Public)
@@ -518,12 +521,10 @@ export default async function aiRoutes(server: FastifyInstance) {
                 const duration = (Date.now() - startTime) / 1000;
                 console.log(`Seedream responded in ${duration}s for shot ${shot.shot_id}`);
 
-                // If it's a URL, we might want to fetch and save it, but saveMedia handles base64.
-                // For now, return the URL directly or if it's base64, save it.
-                if (imageUrl.startsWith('http')) {
+                if (imageUrl && imageUrl.startsWith('http')) {
                     return { image_url: imageUrl };
                 }
-                const savedUrl = await saveMedia(`${projectId || 'global'}_${sequenceId || 'default'}_shot_${shot.shot_id}`, imageUrl);
+                const savedUrl = await saveMedia(`${projectId || 'global'}_${sequenceId || 'default'}_shot_${shot.shot_id}`, imageUrl || '');
                 return { image_url: savedUrl };
             }
 
@@ -596,15 +597,15 @@ export default async function aiRoutes(server: FastifyInstance) {
                 const startTime = Date.now();
                 // Krea image-to-image usually takes an image_url or base64
                 const imageUrl = await generateImageSeedream(`${genPromptText}\nUse this image as reference.`, {
-                    image_url: base64Data.startsWith('http') ? base64Data : `data:${currentMimeType};base64,${base64Data}`
-                });
+                    image_url: (base64Data && base64Data.startsWith('http')) ? base64Data : `data:${currentMimeType};base64,${base64Data}`
+                }, 'bytedance/seedream-v4.5/edit'); // Explicitly use edit for editing
                 const duration = (Date.now() - startTime) / 1000;
                 console.log(`Seedream edit responded in ${duration}s for shot ${shot.shot_id}`);
 
-                if (imageUrl.startsWith('http')) {
+                if (imageUrl && imageUrl.startsWith('http')) {
                     return { image_url: imageUrl, visual_breakdown: shot.visual_breakdown };
                 }
-                const savedUrl = await saveMedia(`${projectId || 'global'}_${sequenceId || 'default'}_shot_${shot.shot_id}_edit_${Date.now()}`, imageUrl);
+                const savedUrl = await saveMedia(`${projectId || 'global'}_${sequenceId || 'default'}_shot_${shot.shot_id}_edit_${Date.now()}`, imageUrl || '');
                 return { image_url: savedUrl, visual_breakdown: shot.visual_breakdown };
             }
 
