@@ -72,15 +72,17 @@ export default async function aiRoutes(server: FastifyInstance) {
 
     const generateImageSeedream = async (prompt: string, imageConfig?: any) => {
         const apiKey = process.env.WAVESPEED_API_KEY;
-        const modelId = process.env.WAVESPEED_MODEL_ID || 'wavespeed-ai/seedream-4-5';
+        // Use the model ID provided by the user, default to text-to-image variant if not edited
+        const modelPath = process.env.WAVESPEED_MODEL_PATH || 'bytedance/seedream-v4.5/sequential';
 
         if (!apiKey) {
             throw new Error("WAVESPEED_API_KEY is not configured.");
         }
 
-        console.log(`Calling Wavespeed.ai (Model: ${modelId}) for prompt: ${prompt.substring(0, 50)}...`);
+        console.log(`Calling Wavespeed.ai (Path: ${modelPath}) for prompt: ${prompt.substring(0, 50)}...`);
 
-        const response = await fetch(`https://api.wavespeed.ai/api/v3/${modelId}`, {
+        // POST to start the job
+        const initialResponse = await fetch(`https://api.wavespeed.ai/api/v3/${modelPath}`, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${apiKey}`,
@@ -88,29 +90,55 @@ export default async function aiRoutes(server: FastifyInstance) {
             },
             body: JSON.stringify({
                 prompt: prompt,
-                // Wavespeed specific parameters
-                // width: 1024,
-                // height: 576,
+                enable_sync_mode: false,
                 ...imageConfig
             })
         });
 
-        if (!response.ok) {
-            const error = await response.text();
-            console.error("Wavespeed API Error:", error);
-            throw new Error(`Wavespeed API Error: ${response.statusText} - ${error}`);
+        if (!initialResponse.ok) {
+            const error = await initialResponse.text();
+            console.error("Wavespeed Job Creation Error:", error);
+            throw new Error(`Wavespeed API Error: ${initialResponse.statusText} - ${error}`);
         }
 
-        const data: any = await response.json();
-        // Wavespeed returns the result in data.output_url or similar
-        const imageUrl = data.output_url || (data.data && data.data[0]?.url) || data.url;
-
-        if (!imageUrl) {
-            console.error("Wavespeed response missing image URL:", data);
-            throw new Error("Wavespeed API did not return an image URL.");
+        const jobData: any = await initialResponse.json();
+        const requestId = jobData.request_id || jobData.id;
+        if (!requestId) {
+            console.error("Wavespeed response missing request_id:", jobData);
+            throw new Error("Wavespeed API did not return a request ID.");
         }
 
-        return imageUrl;
+        console.log(`Wavespeed Job Created: ${requestId}. Polling for result...`);
+
+        // Polling loop
+        let attempts = 0;
+        const maxAttempts = 30; // 30 * 2s = 60s
+        while (attempts < maxAttempts) {
+            await new Promise(r => setTimeout(r, 2000));
+            const statusResponse = await fetch(`https://api.wavespeed.ai/api/v3/predictions/${requestId}/result`, {
+                headers: { 'Authorization': `Bearer ${apiKey}` }
+            });
+
+            if (!statusResponse.ok) {
+                console.warn(`Wavespeed Status Check Failed for ${requestId}: ${statusResponse.status}`);
+                attempts++;
+                continue;
+            }
+
+            const statusData: any = await statusResponse.json();
+            console.log(`Job ${requestId} Status: ${statusData.status || 'unknown'}`);
+
+            // Wavespeed status names might be 'succeeded', 'failed', etc.
+            if (statusData.status === 'succeeded' || statusData.output_url || statusData.url) {
+                return statusData.output_url || statusData.url || (statusData.data && statusData.data[0]?.url);
+            }
+            if (statusData.status === 'failed') {
+                throw new Error(`Wavespeed Job Failed: ${statusData.error || 'Unknown error'}`);
+            }
+            attempts++;
+        }
+
+        throw new Error("Wavespeed generation timed out after 60 seconds.");
     };
 
     // 0. Health check (Public)
