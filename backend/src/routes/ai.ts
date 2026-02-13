@@ -133,11 +133,11 @@ export default async function aiRoutes(server: FastifyInstance) {
             console.log(`Job ${requestId} Status: ${status}`);
 
             // Wavespeed status names might be 'succeeded', 'completed', etc.
-            if (status === 'succeeded' || status === 'completed' || resultData.output_url || resultData.url) {
-                const url = resultData.output_url || resultData.url || (resultData.data && resultData.data[0]?.url);
+            if (status === 'succeeded' || status === 'completed' || resultData.output_url || resultData.url || resultData.image_url) {
+                const url = resultData.output_url || resultData.url || resultData.image_url || resultData.output || (resultData.data && resultData.data[0]?.url);
                 if (url) return url;
-                // If status is succeeded but url is missing, keep looping briefly or throw
-                console.warn(`Job ${requestId} marked ${status} but no URL found yet.`);
+                // If status is succeeded but url is missing, log the structure for debugging
+                console.warn(`Job ${requestId} marked ${status} but no URL found yet. Full Response:`, JSON.stringify(statusData));
             }
             if (status === 'failed') {
                 throw new Error(`Wavespeed Job Failed: ${resultData.error || statusData.error || 'Unknown error'}`);
