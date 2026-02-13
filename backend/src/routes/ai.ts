@@ -74,14 +74,14 @@ export default async function aiRoutes(server: FastifyInstance) {
         const apiKey = process.env.KREA_API_KEY;
         if (!apiKey) throw new Error("KREA_API_KEY is not configured.");
 
-        const response = await fetch('https://api.krea.ai/v1/generate/image/seedream-4.5', {
+        const response = await fetch('https://api.krea.ai/v1/generate/image/bytedance/seedream-4.5', {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${apiKey}`,
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-                prompt: prompt,
+                image_description: prompt,
                 aspect_ratio: "16:9",
                 ...imageConfig
             })
