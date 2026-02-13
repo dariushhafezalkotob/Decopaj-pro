@@ -102,9 +102,10 @@ export default async function aiRoutes(server: FastifyInstance) {
         }
 
         const jobData: any = await initialResponse.json();
-        const requestId = jobData.request_id || jobData.id;
+        const requestId = jobData.request_id || jobData.id || (jobData.data && (jobData.data.request_id || jobData.data.id));
+
         if (!requestId) {
-            console.error("Wavespeed response missing request_id:", jobData);
+            console.error("Wavespeed response missing request_id. Full response:", JSON.stringify(jobData));
             throw new Error("Wavespeed API did not return a request ID.");
         }
 
@@ -126,14 +127,17 @@ export default async function aiRoutes(server: FastifyInstance) {
             }
 
             const statusData: any = await statusResponse.json();
-            console.log(`Job ${requestId} Status: ${statusData.status || 'unknown'}`);
+            const resultData = statusData.data || statusData;
+            const status = resultData.status || statusData.status || 'unknown';
 
-            // Wavespeed status names might be 'succeeded', 'failed', etc.
-            if (statusData.status === 'succeeded' || statusData.output_url || statusData.url) {
-                return statusData.output_url || statusData.url || (statusData.data && statusData.data[0]?.url);
+            console.log(`Job ${requestId} Status: ${status}`);
+
+            // Wavespeed status names might be 'succeeded', 'completed', etc.
+            if (status === 'succeeded' || status === 'completed' || resultData.output_url || resultData.url) {
+                return resultData.output_url || resultData.url || (resultData.data && resultData.data[0]?.url);
             }
-            if (statusData.status === 'failed') {
-                throw new Error(`Wavespeed Job Failed: ${statusData.error || 'Unknown error'}`);
+            if (status === 'failed') {
+                throw new Error(`Wavespeed Job Failed: ${resultData.error || statusData.error || 'Unknown error'}`);
             }
             attempts++;
         }
