@@ -71,63 +71,47 @@ export default async function aiRoutes(server: FastifyInstance) {
     };
 
     const generateImageSeedream = async (prompt: string, imageConfig?: any) => {
-        const apiKey = process.env.KREA_API_KEY;
-        if (!apiKey) throw new Error("KREA_API_KEY is not configured.");
+        const apiKey = process.env.BYTEPLUS_API_KEY;
+        const endpointId = process.env.BYTEPLUS_ENDPOINT_ID;
 
-        const initialResponse = await fetch('https://api.krea.ai/generate/image/bytedance/seedream-4-5', {
+        if (!apiKey || !endpointId) {
+            throw new Error("BYTEPLUS_API_KEY or BYTEPLUS_ENDPOINT_ID is not configured.");
+        }
+
+        console.log(`Calling BytePlus ModelArk for SeaDream 4.5 prompt: ${prompt.substring(0, 50)}...`);
+
+        const response = await fetch('https://ark.ap-southeast.bytepluses.com/api/v3/images/generations', {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${apiKey}`,
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
+                model: endpointId,
                 prompt: prompt,
-                width: 1024,
-                height: 576, // 16:9
+                // BytePlus specific parameters can be added here
+                // width: 1024,
+                // height: 576,
                 ...imageConfig
             })
         });
 
-        if (!initialResponse.ok) {
-            const error = await initialResponse.text();
-            console.error("Krea Job Creation Error:", error);
-            throw new Error(`Krea API Error: ${initialResponse.statusText}`);
+        if (!response.ok) {
+            const error = await response.text();
+            console.error("BytePlus API Error:", error);
+            throw new Error(`BytePlus API Error: ${response.statusText} - ${error}`);
         }
 
-        const jobData: any = await initialResponse.json();
-        const jobId = jobData.job_id || jobData.id;
-        if (!jobId) throw new Error("Krea API did not return a job ID.");
+        const data: any = await response.json();
+        // BytePlus often returns the result in data[0].url or similar
+        const imageUrl = data.data?.[0]?.url || data.url || data.image_url;
 
-        console.log(`Krea Job Created: ${jobId}. Polling for result...`);
-
-        // Polling loop
-        let attempts = 0;
-        const maxAttempts = 30; // 30 * 2s = 60s
-        while (attempts < maxAttempts) {
-            await new Promise(r => setTimeout(r, 2000));
-            const statusResponse = await fetch(`https://api.krea.ai/jobs/${jobId}`, {
-                headers: { 'Authorization': `Bearer ${apiKey}` }
-            });
-
-            if (!statusResponse.ok) {
-                console.error(`Krea Status Check Failed for ${jobId}`);
-                attempts++;
-                continue;
-            }
-
-            const statusData: any = await statusResponse.json();
-            console.log(`Job ${jobId} Status: ${statusData.status}`);
-
-            if (statusData.status === 'completed') {
-                return statusData.result || statusData.url || (statusData.data && statusData.data[0]?.url);
-            }
-            if (statusData.status === 'failed') {
-                throw new Error(`Krea Job Failed: ${statusData.error || 'Unknown error'}`);
-            }
-            attempts++;
+        if (!imageUrl) {
+            console.error("BytePlus response missing image URL:", data);
+            throw new Error("BytePlus API did not return an image URL.");
         }
 
-        throw new Error("Krea generation timed out after 60 seconds.");
+        return imageUrl;
     };
 
     // 0. Health check (Public)
