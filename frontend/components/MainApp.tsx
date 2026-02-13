@@ -168,6 +168,7 @@ const MainApp: React.FC = () => {
         isAnalyzing: false,
         isGeneratingImages: false,
         imageSize: '1K',
+        aiModel: 'gemini-high',
         hasApiKey: false,
         error: null,
         isCreatingProject: false,
@@ -453,7 +454,8 @@ const MainApp: React.FC = () => {
                 activeProject.name,
                 activeSequence.title,
                 activeProject.id,
-                activeSequence.id
+                activeSequence.id,
+                state.aiModel
             );
             setState(prev => ({
                 ...prev,
@@ -507,7 +509,8 @@ const MainApp: React.FC = () => {
                 activeSequence.title,
                 activeProject.id,
                 activeSequence.id,
-                allAssets
+                allAssets,
+                state.aiModel
             );
 
             setState(prev => ({
@@ -586,7 +589,8 @@ const MainApp: React.FC = () => {
                 activeProject.name,
                 activeSequence.title,
                 activeProject.id,
-                activeSequence.id
+                activeSequence.id,
+                state.aiModel
             );
 
             // Update shot with image
@@ -649,7 +653,8 @@ const MainApp: React.FC = () => {
                         activeProject.name,
                         activeSequence.title,
                         activeProject.id,
-                        activeSequence.id
+                        activeSequence.id,
+                        state.aiModel
                     );
                     setState(prev => ({
                         ...prev,
@@ -747,6 +752,20 @@ const MainApp: React.FC = () => {
                         <span className="text-[9px] font-black uppercase tracking-widest text-zinc-400">
                             {state.isIframe ? 'RESTRICTED DRIVE' : 'DRIVE LINK READY'}
                         </span>
+                    </div>
+                    <div className="flex bg-zinc-900 p-1 rounded-full border border-zinc-800">
+                        <button
+                            onClick={() => setState(p => ({ ...p, aiModel: 'gemini-high' }))}
+                            className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest transition-all ${state.aiModel === 'gemini-high' ? 'bg-amber-500 text-zinc-950' : 'text-zinc-500 hover:text-zinc-300'}`}
+                        >
+                            High-End
+                        </button>
+                        <button
+                            onClick={() => setState(p => ({ ...p, aiModel: 'seedream-4.5' }))}
+                            className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest transition-all ${state.aiModel === 'seedream-4.5' ? 'bg-emerald-500 text-zinc-950' : 'text-zinc-500 hover:text-zinc-300'}`}
+                        >
+                            Production
+                        </button>
                     </div>
                     <div className="text-[10px] px-4 py-1.5 rounded-full border border-emerald-500/50 text-emerald-400 bg-emerald-500/5 uppercase font-black tracking-widest">
                         API Ready

@@ -129,14 +129,14 @@ export const analyzeCustomShotProxy = async (description: string, assets: any[])
     return await res.json();
 };
 
-export const generateImageProxy = async (shot: any, size: string, assets: any[], projectName: string, sequenceTitle: string, projectId: string, sequenceId: string) => {
+export const generateImageProxy = async (shot: any, size: string, assets: any[], projectName: string, sequenceTitle: string, projectId: string, sequenceId: string, aiModel: string) => {
     console.log(`Starting image generation for shot ${shot.shot_id}...`);
     const startTime = Date.now();
     try {
         const res = await fetch(`${API_URL}/ai/generate-image`, {
             method: 'POST',
             headers: getHeaders(),
-            body: JSON.stringify({ shot, size, assets, projectName, sequenceTitle, projectId, sequenceId })
+            body: JSON.stringify({ shot, size, assets, projectName, sequenceTitle, projectId, sequenceId, model: aiModel })
         });
         const duration = (Date.now() - startTime) / 1000;
         console.log(`Image generation response for ${shot.shot_id} received in ${duration}s:`, res.status);
@@ -155,14 +155,14 @@ export const generateImageProxy = async (shot: any, size: string, assets: any[],
     }
 };
 
-export const editShotProxy = async (originalBase64: string, editPrompt: string, shot: any, projectName: string, sequenceTitle: string, projectId: string, sequenceId: string, assets: any[]) => {
+export const editShotProxy = async (originalBase64: string, editPrompt: string, shot: any, projectName: string, sequenceTitle: string, projectId: string, sequenceId: string, assets: any[], aiModel: string) => {
     console.log(`Starting shot edit for shot ${shot.shot_id}...`);
     const startTime = Date.now();
     try {
         const res = await fetch(`${API_URL}/ai/edit-shot`, {
             method: 'POST',
             headers: getHeaders(),
-            body: JSON.stringify({ originalBase64, editPrompt, shot, projectName, sequenceTitle, projectId, sequenceId, assets })
+            body: JSON.stringify({ originalBase64, editPrompt, shot, projectName, sequenceTitle, projectId, sequenceId, assets, model: aiModel })
         });
         const duration = (Date.now() - startTime) / 1000;
         console.log(`Edit shot response for ${shot.shot_id} received in ${duration}s:`, res.status);

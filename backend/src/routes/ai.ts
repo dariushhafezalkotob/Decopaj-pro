@@ -70,6 +70,33 @@ export default async function aiRoutes(server: FastifyInstance) {
         return { data: input, mimeType };
     };
 
+    const generateImageSeedream = async (prompt: string, imageConfig?: any) => {
+        const apiKey = process.env.KREA_API_KEY;
+        if (!apiKey) throw new Error("KREA_API_KEY is not configured.");
+
+        const response = await fetch('https://api.krea.ai/v1/generate/image/seedream-4.5', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${apiKey}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                prompt: prompt,
+                aspect_ratio: "16:9",
+                ...imageConfig
+            })
+        });
+
+        if (!response.ok) {
+            const error = await response.text();
+            console.error("Krea API Error:", error);
+            throw new Error(`Krea API Error: ${response.statusText}`);
+        }
+
+        const data: any = await response.json();
+        return data.url || data.image_url || data.data?.[0]?.url;
+    };
+
     // 0. Health check (Public)
     server.get('/health', async () => {
         return { status: 'ok', timestamp: new Date().toISOString() };
@@ -375,7 +402,7 @@ export default async function aiRoutes(server: FastifyInstance) {
 
     // 3. Generate Image
     server.post('/generate-image', async (request: any, reply) => {
-        const { shot, size, assets, projectName, sequenceTitle, projectId, sequenceId } = request.body;
+        const { shot, size, assets, projectName, sequenceTitle, projectId, sequenceId, model: requestedModel } = request.body;
         const ai = getAI();
         const parts: any[] = [];
 
@@ -433,7 +460,25 @@ export default async function aiRoutes(server: FastifyInstance) {
     `
         });
 
+        const fullPrompt = parts.map(p => p.text || '').join('\n');
+
         try {
+            if (requestedModel === 'seedream-4.5') {
+                console.log(`Calling Seedream 4.5 (Krea) for shot ${shot.shot_id}...`);
+                const startTime = Date.now();
+                const imageUrl = await generateImageSeedream(fullPrompt);
+                const duration = (Date.now() - startTime) / 1000;
+                console.log(`Seedream responded in ${duration}s for shot ${shot.shot_id}`);
+
+                // If it's a URL, we might want to fetch and save it, but saveMedia handles base64.
+                // For now, return the URL directly or if it's base64, save it.
+                if (imageUrl.startsWith('http')) {
+                    return { image_url: imageUrl };
+                }
+                const savedUrl = await saveMedia(`${projectId || 'global'}_${sequenceId || 'default'}_shot_${shot.shot_id}`, imageUrl);
+                return { image_url: savedUrl };
+            }
+
             console.log(`Calling Gemini (${model}) for shot ${shot.shot_id}...`);
             const startTime = Date.now();
             const response = await ai.models.generateContent({
@@ -474,7 +519,7 @@ export default async function aiRoutes(server: FastifyInstance) {
 
     // 4. Edit Shot
     server.post('/edit-shot', async (request: any, reply) => {
-        const { originalBase64, editPrompt, shot, projectName, sequenceTitle, projectId, sequenceId, assets } = request.body;
+        const { originalBase64, editPrompt, shot, projectName, sequenceTitle, projectId, sequenceId, assets, model: requestedModel } = request.body;
         const ai = getAI();
         const mimeType = 'image/png';
 
@@ -498,6 +543,23 @@ export default async function aiRoutes(server: FastifyInstance) {
   `;
 
         try {
+            if (requestedModel === 'seedream-4.5') {
+                console.log(`Calling Seedream 4.5 (Krea) to EDIT shot ${shot.shot_id}...`);
+                const startTime = Date.now();
+                // Krea image-to-image usually takes an image_url or base64
+                const imageUrl = await generateImageSeedream(`${genPromptText}\nUse this image as reference.`, {
+                    image_url: base64Data.startsWith('http') ? base64Data : `data:${currentMimeType};base64,${base64Data}`
+                });
+                const duration = (Date.now() - startTime) / 1000;
+                console.log(`Seedream edit responded in ${duration}s for shot ${shot.shot_id}`);
+
+                if (imageUrl.startsWith('http')) {
+                    return { image_url: imageUrl, visual_breakdown: shot.visual_breakdown };
+                }
+                const savedUrl = await saveMedia(`${projectId || 'global'}_${sequenceId || 'default'}_shot_${shot.shot_id}_edit_${Date.now()}`, imageUrl);
+                return { image_url: savedUrl, visual_breakdown: shot.visual_breakdown };
+            }
+
             console.log(`Calling Gemini (gemini-3-pro-image-preview) to EDIT shot ${shot.shot_id}...`);
             const startTime = Date.now();
             const imgResponse = await ai.models.generateContent({

@@ -1,5 +1,5 @@
 
-import { ShotPlan, ImageSize, Entity, AnalysisResponse, EntityIdentificationResponse, VisualBreakdown } from "../types";
+import { ShotPlan, ImageSize, Entity, AnalysisResponse, EntityIdentificationResponse, VisualBreakdown, AIModel } from "../types";
 import { identifyEntitiesProxy, analyzeScriptProxy, analyzeCustomShotProxy, generateImageProxy, editShotProxy } from "./api";
 
 // STAGE 1: Identify additional locations and items, respecting the global cast
@@ -23,9 +23,10 @@ export const generateShotImage = async (
     projectName: string,
     sequenceTitle: string,
     projectId: string,
-    sequenceId: string
+    sequenceId: string,
+    aiModel: AIModel
 ): Promise<string> => {
-    return await generateImageProxy(shot, size, assets, projectName, sequenceTitle, projectId, sequenceId);
+    return await generateImageProxy(shot, size, assets, projectName, sequenceTitle, projectId, sequenceId, aiModel);
 };
 
 export const editShotImage = async (
@@ -36,7 +37,8 @@ export const editShotImage = async (
     sequenceTitle: string,
     projectId: string,
     sequenceId: string,
-    assets: any[]
+    assets: any[],
+    aiModel: AIModel
 ): Promise<{ image_url: string, visual_breakdown: VisualBreakdown }> => {
-    return await editShotProxy(originalBase64, editPrompt, shot, projectName, sequenceTitle, projectId, sequenceId, assets);
+    return await editShotProxy(originalBase64, editPrompt, shot, projectName, sequenceTitle, projectId, sequenceId, assets, aiModel);
 };

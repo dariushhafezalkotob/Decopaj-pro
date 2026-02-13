@@ -89,6 +89,7 @@ export interface EntityIdentificationResponse {
 }
 
 export type ImageSize = "1K" | "2K" | "4K";
+export type AIModel = "gemini-high" | "seedream-4.5";
 
 export interface AppState {
     projects: Project[];
@@ -99,6 +100,7 @@ export interface AppState {
     isAnalyzing: boolean;
     isGeneratingImages: boolean;
     imageSize: ImageSize;
+    aiModel: AIModel;
     hasApiKey: boolean;
     error: string | null;
     insertionIndex: number | null;
