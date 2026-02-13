@@ -74,27 +74,60 @@ export default async function aiRoutes(server: FastifyInstance) {
         const apiKey = process.env.KREA_API_KEY;
         if (!apiKey) throw new Error("KREA_API_KEY is not configured.");
 
-        const response = await fetch('https://api.krea.ai/v1/generate/image/bytedance/seedream-4.5', {
+        const initialResponse = await fetch('https://api.krea.ai/generate/image/bytedance/seedream-4.5', {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${apiKey}`,
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-                image_description: prompt,
-                aspect_ratio: "16:9",
+                prompt: prompt,
+                width: 1024,
+                height: 576, // 16:9
                 ...imageConfig
             })
         });
 
-        if (!response.ok) {
-            const error = await response.text();
-            console.error("Krea API Error:", error);
-            throw new Error(`Krea API Error: ${response.statusText}`);
+        if (!initialResponse.ok) {
+            const error = await initialResponse.text();
+            console.error("Krea Job Creation Error:", error);
+            throw new Error(`Krea API Error: ${initialResponse.statusText}`);
         }
 
-        const data: any = await response.json();
-        return data.url || data.image_url || data.data?.[0]?.url;
+        const jobData: any = await initialResponse.json();
+        const jobId = jobData.job_id || jobData.id;
+        if (!jobId) throw new Error("Krea API did not return a job ID.");
+
+        console.log(`Krea Job Created: ${jobId}. Polling for result...`);
+
+        // Polling loop
+        let attempts = 0;
+        const maxAttempts = 30; // 30 * 2s = 60s
+        while (attempts < maxAttempts) {
+            await new Promise(r => setTimeout(r, 2000));
+            const statusResponse = await fetch(`https://api.krea.ai/jobs/${jobId}`, {
+                headers: { 'Authorization': `Bearer ${apiKey}` }
+            });
+
+            if (!statusResponse.ok) {
+                console.error(`Krea Status Check Failed for ${jobId}`);
+                attempts++;
+                continue;
+            }
+
+            const statusData: any = await statusResponse.json();
+            console.log(`Job ${jobId} Status: ${statusData.status}`);
+
+            if (statusData.status === 'completed') {
+                return statusData.result || statusData.url || (statusData.data && statusData.data[0]?.url);
+            }
+            if (statusData.status === 'failed') {
+                throw new Error(`Krea Job Failed: ${statusData.error || 'Unknown error'}`);
+            }
+            attempts++;
+        }
+
+        throw new Error("Krea generation timed out after 60 seconds.");
     };
 
     // 0. Health check (Public)
