@@ -72,7 +72,7 @@ export default async function aiRoutes(server: FastifyInstance) {
 
     const generateImageSeedream = async (prompt: string, imageConfig?: any, modelPathOverride?: string) => {
         const apiKey = process.env.WAVESPEED_API_KEY;
-        // Default to sequential for new generation, but allow override for editing
+        // Default to sequential for new generation
         const modelPath = modelPathOverride || process.env.WAVESPEED_MODEL_PATH || 'bytedance/seedream-v4.5/sequential';
 
         if (!apiKey) {
@@ -81,6 +81,20 @@ export default async function aiRoutes(server: FastifyInstance) {
 
         console.log(`Calling Wavespeed.ai (Path: ${modelPath}) for prompt: ${prompt.substring(0, 50)}...`);
 
+        // Prepare payload correctly
+        const payload: any = {
+            prompt: prompt,
+            enable_sync_mode: false,
+            enable_base64_output: false,
+            ...imageConfig
+        };
+
+        // If it's the edit model and we have an image_url, translate to 'images' as required by the API
+        if (modelPath.includes('/edit') && payload.image_url) {
+            payload.images = [payload.image_url];
+            delete payload.image_url;
+        }
+
         // POST to start the job
         const initialResponse = await fetch(`https://api.wavespeed.ai/api/v3/${modelPath}`, {
             method: 'POST',
@@ -88,11 +102,7 @@ export default async function aiRoutes(server: FastifyInstance) {
                 'Authorization': `Bearer ${apiKey}`,
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({
-                prompt: prompt,
-                enable_sync_mode: false,
-                ...imageConfig
-            })
+            body: JSON.stringify(payload)
         });
 
         if (!initialResponse.ok) {
@@ -102,10 +112,11 @@ export default async function aiRoutes(server: FastifyInstance) {
         }
 
         const jobData: any = await initialResponse.json();
-        const requestId = jobData.request_id || jobData.id || (jobData.data && (jobData.data.request_id || jobData.data.id));
+        // User examples show it's in data.id
+        const requestId = (jobData.data && jobData.data.id) || jobData.request_id || jobData.id || (jobData.data && jobData.data.request_id);
 
         if (!requestId) {
-            console.error("Wavespeed response missing request_id. Full response:", JSON.stringify(jobData));
+            console.error("Wavespeed response missing request id. Full response:", JSON.stringify(jobData));
             throw new Error("Wavespeed API did not return a request ID.");
         }
 
@@ -113,9 +124,9 @@ export default async function aiRoutes(server: FastifyInstance) {
 
         // Polling loop
         let attempts = 0;
-        const maxAttempts = 60; // 60 * 2s = 120s (SeaDream can take time)
+        const maxAttempts = 120; // 120 * 1s = 120s (Matching user's example polling frequency but keeping 120s total)
         while (attempts < maxAttempts) {
-            await new Promise(r => setTimeout(r, 2000));
+            await new Promise(r => setTimeout(r, 1000));
             const statusResponse = await fetch(`https://api.wavespeed.ai/api/v3/predictions/${requestId}/result`, {
                 headers: { 'Authorization': `Bearer ${apiKey}` }
             });
@@ -126,21 +137,21 @@ export default async function aiRoutes(server: FastifyInstance) {
                 continue;
             }
 
-            const statusData: any = await statusResponse.json();
-            const resultData = statusData.data || statusData;
-            const status = resultData.status || statusData.status || 'unknown';
+            const statusJson: any = await statusResponse.json();
+            const data = statusJson.data || statusJson;
+            const status = data.status || 'unknown';
 
             console.log(`Job ${requestId} Status: ${status}`);
 
-            // Wavespeed status names might be 'succeeded', 'completed', etc.
-            if (status === 'succeeded' || status === 'completed' || resultData.output_url || resultData.url || resultData.image_url) {
-                const url = resultData.output_url || resultData.url || resultData.image_url || resultData.output || (resultData.data && resultData.data[0]?.url);
+            if (status === 'completed' || status === 'succeeded') {
+                // User example: resultUrl = data.outputs[0]
+                const url = (data.outputs && data.outputs[0]) || data.output_url || data.url || data.image_url || data.output;
                 if (url) return url;
-                // If status is succeeded but url is missing, log the structure for debugging
-                console.warn(`Job ${requestId} marked ${status} but no URL found yet. Full Response:`, JSON.stringify(statusData));
+
+                console.warn(`Job ${requestId} marked ${status} but no URL found yet. Full Response:`, JSON.stringify(statusJson));
             }
             if (status === 'failed') {
-                throw new Error(`Wavespeed Job Failed: ${resultData.error || statusData.error || 'Unknown error'}`);
+                throw new Error(`Wavespeed Job Failed: ${data.error || 'Unknown error'}`);
             }
             attempts++;
         }
