@@ -266,7 +266,7 @@ export const ShotCard: React.FC<ShotCardProps> = ({ shot, onRetry, onEdit, onDel
                         <img
                             src={shot.image_url.startsWith('/') ? `${BACKEND_URL}${shot.image_url}` : shot.image_url}
                             alt={shot.plan_type}
-                            className="w-full h-full object-contain shadow-2xl rounded-lg animate-in zoom-in-95 duration-300"
+                            className="max-w-[90vw] max-h-[85vh] w-auto h-auto object-contain shadow-2xl rounded-lg animate-in zoom-in-95 duration-300"
                             onClick={(e) => e.stopPropagation()}
                         />
 
