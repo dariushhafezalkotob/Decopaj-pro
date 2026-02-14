@@ -563,7 +563,19 @@ export default async function aiRoutes(server: FastifyInstance) {
                     modelPath = 'bytedance/seedream-v4.5/sequential';
                 }
 
-                const imageUrl = await generateImageSeedream(fullPrompt, { images: referenceImages }, modelPath);
+                // Determine resolution based on size or default to 16:9 (1344x768 is common for SDXL-class 16:9)
+                // If the frontend sends specific dimensions in 'size', use them.
+                // Otherwise, hardcode a cinematic 16:9 ratio to match Gemini's setting.
+                const width = 1344;
+                const height = 768;
+
+                const imageConfig = {
+                    images: referenceImages,
+                    width,
+                    height
+                };
+
+                const imageUrl = await generateImageSeedream(fullPrompt, imageConfig, modelPath);
                 const duration = (Date.now() - startTime) / 1000;
                 console.log(`Seedream responded in ${duration}s for shot ${shot.shot_id}`);
 
