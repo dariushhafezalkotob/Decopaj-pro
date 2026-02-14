@@ -602,9 +602,22 @@ export default async function aiRoutes(server: FastifyInstance) {
         console.log(`Editing shot: ${shot.shot_id}, Original: ${typeof originalBase64 === 'string' ? originalBase64.substring(0, 50) : 'not a string'}...`);
 
         const imageRes = await resolveImageResource(originalBase64);
-        if (!imageRes) throw new Error("No original image data provided.");
-        const base64Data = imageRes.data;
-        const currentMimeType = imageRes.mimeType;
+
+        // Handling HTTP URLs for Seedream (bypass formatting if it's a URL)
+        let base64Data: string;
+        let currentMimeType: string = 'image/png';
+
+        if (!imageRes) {
+            if (requestedModel === 'seedream-4.5' && typeof originalBase64 === 'string' && originalBase64.startsWith('http')) {
+                console.log("Input is a URL, passing directly to Seedream.");
+                base64Data = originalBase64;
+            } else {
+                throw new Error("No original image data provided.");
+            }
+        } else {
+            base64Data = imageRes.data;
+            currentMimeType = imageRes.mimeType;
+        }
 
         // STEP 1: Generate the new visual
         const genPromptText = `
