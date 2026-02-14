@@ -535,7 +535,7 @@ export default async function aiRoutes(server: FastifyInstance) {
     `
         });
 
-        const fullPrompt = parts.map(p => p.text || '').join('\n');
+        let fullPrompt = parts.map(p => p.text || '').join('\n');
 
         try {
             if (requestedModel === 'seedream-4.5') {
