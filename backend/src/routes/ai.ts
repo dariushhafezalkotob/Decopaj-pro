@@ -73,7 +73,7 @@ export default async function aiRoutes(server: FastifyInstance) {
     const generateImageSeedream = async (prompt: string, imageConfig?: any, modelPathOverride?: string) => {
         const apiKey = process.env.WAVESPEED_API_KEY;
         // Default to sequential for new generation
-        const modelPath = modelPathOverride || process.env.WAVESPEED_MODEL_PATH || 'bytedance/seedream-v4.5/sequential';
+        let modelPath = modelPathOverride || process.env.WAVESPEED_MODEL_PATH || 'bytedance/seedream-v4.5/sequential';
 
         if (!apiKey) {
             throw new Error("WAVESPEED_API_KEY is not configured.");
