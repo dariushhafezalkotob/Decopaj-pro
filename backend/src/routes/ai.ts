@@ -558,6 +558,10 @@ export default async function aiRoutes(server: FastifyInstance) {
                 if (referenceImages.length > 0) {
                     console.log(`Found ${referenceImages.length} reference images. Switching to 'edit-sequential' model.`);
                     modelPath = 'bytedance/seedream-v4.5/edit-sequential';
+
+                    // Enforce style preservation via prompt engineering
+                    // The user explicitly asked for style preservation.
+                    fullPrompt += "\nIMPORTANT: Maintain the exact visual style, color palette, and aesthetics of the provided reference images.";
                 } else if (modelPath && modelPath.includes('/edit')) {
                     console.warn(`WAVESPEED_MODEL_PATH is set to an edit model (${modelPath}) but we are performing Text-to-Image. Ignoring ENV and using default sequential.`);
                     modelPath = 'bytedance/seedream-v4.5/sequential';
