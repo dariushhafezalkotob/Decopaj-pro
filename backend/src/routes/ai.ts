@@ -102,6 +102,12 @@ export default async function aiRoutes(server: FastifyInstance) {
             }
         }
 
+        // Ensure images are strictly strings (URLs or Data URIs) if provided
+        if (payload.images && Array.isArray(payload.images)) {
+            // Wavespeed accepts array of strings.
+            // No specific cleaning needed if they are already valid URLs/DataURIs
+        }
+
         // POST to start the job
         const initialResponse = await fetch(`https://api.wavespeed.ai/api/v3/${modelPath}`, {
             method: 'POST',
@@ -538,13 +544,26 @@ export default async function aiRoutes(server: FastifyInstance) {
 
                 // Explicitly force the T2I model path for generation, or allow env override ONLY if it's not an edit path
                 // But safest is to default to sequential for T2I if env is ambiguous
-                let modelPath = process.env.WAVESPEED_MODEL_PATH;
-                if (modelPath && modelPath.includes('/edit')) {
+                let modelPath = process.env.WAVESPEED_MODEL_PATH || 'bytedance/seedream-v4.5/sequential';
+
+                // Extract any inline images from parts to send as reference images
+                const referenceImages: string[] = [];
+                for (const p of parts) {
+                    if (p.inlineData && p.inlineData.data && p.inlineData.mimeType) {
+                        referenceImages.push(`data:${p.inlineData.mimeType};base64,${p.inlineData.data}`);
+                    }
+                }
+
+                // If we have reference images, we MUST use the edit-sequential endpoint to utilize them
+                if (referenceImages.length > 0) {
+                    console.log(`Found ${referenceImages.length} reference images. Switching to 'edit-sequential' model.`);
+                    modelPath = 'bytedance/seedream-v4.5/edit-sequential';
+                } else if (modelPath && modelPath.includes('/edit')) {
                     console.warn(`WAVESPEED_MODEL_PATH is set to an edit model (${modelPath}) but we are performing Text-to-Image. Ignoring ENV and using default sequential.`);
                     modelPath = 'bytedance/seedream-v4.5/sequential';
                 }
 
-                const imageUrl = await generateImageSeedream(fullPrompt, {}, modelPath);
+                const imageUrl = await generateImageSeedream(fullPrompt, { images: referenceImages }, modelPath);
                 const duration = (Date.now() - startTime) / 1000;
                 console.log(`Seedream responded in ${duration}s for shot ${shot.shot_id}`);
 
