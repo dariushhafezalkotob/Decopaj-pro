@@ -89,10 +89,17 @@ export default async function aiRoutes(server: FastifyInstance) {
             ...imageConfig
         };
 
-        // If it's the edit model and we have an image_url, translate to 'images' as required by the API
         if (modelPath.includes('/edit') && payload.image_url) {
             payload.images = [payload.image_url];
             delete payload.image_url;
+        } else if (modelPath.includes('/edit') && !payload.images) {
+            // If we are hitting an edit endpoint but have no images, we are in trouble.
+            // This happens if the user set WAVESPEED_MODEL_PATH to an edit model but is doing T2I.
+            // We should try to fallback or throw a clearer error.
+            if (!imageConfig || !imageConfig.images) {
+                console.warn("WARNING: Using an edit model endpoint for Text-to-Image generation without input images. Switching to 'sequential' model.");
+                modelPath = 'bytedance/seedream-v4.5/sequential';
+            }
         }
 
         // POST to start the job
@@ -526,9 +533,18 @@ export default async function aiRoutes(server: FastifyInstance) {
 
         try {
             if (requestedModel === 'seedream-4.5') {
-                console.log(`Calling Seedream 4.5 (Krea) for shot ${shot.shot_id}...`);
+                console.log(`Calling Seedream 4.5 (Wavespeed) for shot ${shot.shot_id}...`);
                 const startTime = Date.now();
-                const imageUrl = await generateImageSeedream(fullPrompt);
+
+                // Explicitly force the T2I model path for generation, or allow env override ONLY if it's not an edit path
+                // But safest is to default to sequential for T2I if env is ambiguous
+                let modelPath = process.env.WAVESPEED_MODEL_PATH;
+                if (modelPath && modelPath.includes('/edit')) {
+                    console.warn(`WAVESPEED_MODEL_PATH is set to an edit model (${modelPath}) but we are performing Text-to-Image. Ignoring ENV and using default sequential.`);
+                    modelPath = 'bytedance/seedream-v4.5/sequential';
+                }
+
+                const imageUrl = await generateImageSeedream(fullPrompt, {}, modelPath);
                 const duration = (Date.now() - startTime) / 1000;
                 console.log(`Seedream responded in ${duration}s for shot ${shot.shot_id}`);
 
