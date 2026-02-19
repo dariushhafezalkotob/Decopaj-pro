@@ -644,7 +644,7 @@ export default async function aiRoutes(server: FastifyInstance) {
                         const modelPath = 'wavespeed-ai/flux-2-klein-9b/edit-lora';
 
                         // Prepare the specific comic style prompt
-                        const comicPrompt = "translate this image to Comic_Flux style. match original image exposure and luminance exactly, preserve original midtone darkness";
+                        const comicPrompt = "translate this image to Comic_Flux style. match original image exposure and luminance exactly";
 
                         const imageConfig = {
                             images: [`data:image/jpeg;base64,${finalImageData}`], // Use Gemini output as input
