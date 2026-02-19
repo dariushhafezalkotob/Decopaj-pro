@@ -89,7 +89,7 @@ export interface EntityIdentificationResponse {
 }
 
 export type ImageSize = "1K" | "2K" | "4K";
-export type AIModel = "gemini-high" | "seedream-4.5";
+export type AIModel = "gemini-high" | "seedream-4.5" | "flux-comic";
 
 export interface AppState {
     projects: Project[];
