@@ -89,16 +89,30 @@ export default async function aiRoutes(server: FastifyInstance) {
             ...imageConfig
         };
 
-        if (modelPath.includes('/edit') && payload.image_url) {
-            payload.images = [payload.image_url];
-            delete payload.image_url;
-        } else if (modelPath.includes('/edit') && !payload.images) {
-            // If we are hitting an edit endpoint but have no images, we are in trouble.
-            // This happens if the user set WAVESPEED_MODEL_PATH to an edit model but is doing T2I.
-            // We should try to fallback or throw a clearer error.
-            if (!imageConfig || !imageConfig.images) {
-                console.warn("WARNING: Using an edit model endpoint for Text-to-Image generation without input images. Switching to 'sequential' model.");
-                modelPath = 'bytedance/seedream-v4.5/sequential';
+        // FLUX FIX: Flux expects 'size' as string "WxH" and 'images' array.
+        // It does NOT accept 'width' and 'height' as separate fields like Seedream might.
+        if (modelPath.includes('flux')) {
+            if (payload.width && payload.height) {
+                payload.size = `${payload.width}*${payload.height}`;
+                delete payload.width;
+                delete payload.height;
+            }
+            // Ensure images is an array if present
+            if (payload.image_url) {
+                payload.images = [payload.image_url];
+                delete payload.image_url;
+            }
+            // Ensure loras are passed through (already in imageConfig)
+        } else {
+            // Existing logic for Seedream
+            if (modelPath.includes('/edit') && payload.image_url) {
+                payload.images = [payload.image_url];
+                delete payload.image_url;
+            } else if (modelPath.includes('/edit') && !payload.images) {
+                if (!imageConfig || !imageConfig.images) {
+                    console.warn("WARNING: Using an edit model endpoint for Text-to-Image generation without input images. Switching to 'sequential' model.");
+                    modelPath = 'bytedance/seedream-v4.5/sequential';
+                }
             }
         }
 
@@ -107,6 +121,8 @@ export default async function aiRoutes(server: FastifyInstance) {
             // Wavespeed accepts array of strings.
             // No specific cleaning needed if they are already valid URLs/DataURIs
         }
+
+        console.log("Flux Payload Debug:", JSON.stringify(payload, null, 2));
 
         // POST to start the job
         const initialResponse = await fetch(`https://api.wavespeed.ai/api/v3/${modelPath}`, {
@@ -591,80 +607,98 @@ export default async function aiRoutes(server: FastifyInstance) {
                 return { image_url: savedUrl };
             }
 
-            if (requestedModel === 'flux-comic') {
-                console.log(`Calling Flux Comic (Wavespeed) for shot ${shot.shot_id}...`);
+            // GEMINI GENERATION (Common for default and Flux-Comic pre-pass)
+            // If model is Gemini OR Flux-Comic (which needs a base image), we run Gemini first.
+            if (requestedModel !== 'seedream-4.5') {
+                console.log(`Calling Gemini (${model}) for shot ${shot.shot_id}...`);
                 const startTime = Date.now();
-                const modelPath = 'wavespeed-ai/flux-2-klein-9b/edit-lora';
 
-                // Extract reference images (same as seedream logic)
-                const referenceImages: string[] = [];
-                for (const p of parts) {
-                    if (p.inlineData && p.inlineData.data && p.inlineData.mimeType) {
-                        referenceImages.push(`data:${p.inlineData.mimeType};base64,${p.inlineData.data}`);
+                // If Flux-Comic, we might want to ensure Gemini is fast/preview quality or just standard?
+                // Using standard 'gemini-3-pro-image-preview' as set above.
+
+                const response = await ai.models.generateContent({
+                    model: model,
+                    contents: { parts },
+                    config: {
+                        imageConfig: {
+                            aspectRatio: "16:9"
+                        }
                     }
+                });
+                const duration = (Date.now() - startTime) / 1000;
+                console.log(`Gemini responded in ${duration}s for shot ${shot.shot_id}`);
+
+                if (response.candidates?.[0]?.finishReason) {
+                    console.log(`Finish reason for ${shot.shot_id}: ${response.candidates[0].finishReason}`);
                 }
 
-                // If no reference images, we might want to warn, but edit-lora might work t2i if images is empty?
-                // The API spec says images is optional.
+                const part = response.candidates?.[0]?.content?.parts?.find((p: any) => p.inlineData);
 
-                const imageConfig = {
-                    images: referenceImages.length > 0 ? referenceImages : undefined,
-                    width: 1280, // Flux specific size
-                    height: 720,
-                    loras: [
-                        {
-                            path: "https://huggingface.co/dariushh/Comic_Flux2_V1_lora/resolve/main/Comic_Klein_V1.safetensors",
-                            scale: 0.78
+                if (part?.inlineData?.data) {
+                    let finalImageData = part.inlineData.data;
+
+                    // --- FLUX COMIC POST-PROCESSING ---
+                    if (requestedModel === 'flux-comic') {
+                        console.log("Flux Comic active: Pipe Gemini output to Wavespeed Edit...");
+                        const fluxStartTime = Date.now();
+                        const modelPath = 'wavespeed-ai/flux-2-klein-9b/edit-lora';
+
+                        // Prepare the specific comic style prompt
+                        const comicPrompt = "translate this image to Comic_Flux style. match original image exposure and luminance exactly, preserve original midtone darkness";
+
+                        const imageConfig = {
+                            images: [`data:image/jpeg;base64,${finalImageData}`], // Use Gemini output as input
+                            width: 1280,
+                            height: 720,
+                            loras: [
+                                {
+                                    path: "https://huggingface.co/dariushh/Comic_Flux2_V1_lora/resolve/main/Comic_Klein_V1.safetensors",
+                                    scale: 1.5 // Increased to 1.5 as requested
+                                }
+                            ],
+                            seed: -1
+                        };
+
+                        console.log("----------------------------------------------------------------");
+                        console.log("FLUX COMIC PIPELINE PROMPT:", comicPrompt);
+                        console.log("LORA CONFIG:", JSON.stringify(imageConfig.loras));
+                        console.log("----------------------------------------------------------------");
+
+                        try {
+                            const comicImageUrl = await generateImageSeedream(comicPrompt, imageConfig, modelPath);
+                            const fluxDuration = (Date.now() - fluxStartTime) / 1000;
+                            console.log(`Flux Comic post-process finished in ${fluxDuration}s`);
+
+                            if (comicImageUrl && comicImageUrl.startsWith('http')) {
+                                return { image_url: comicImageUrl };
+                            }
+                            // If it returned a base64 or something else (unlikely with current logic but handle it)
+                            // generateImageSeedream usually returns a URL from Wavespeed
+                            const savedUrl = await saveMedia(`${projectId || 'global'}_${sequenceId || 'default'}_shot_${shot.shot_id}_comic`, comicImageUrl || '');
+                            return { image_url: savedUrl };
+
+                        } catch (err: any) {
+                            console.error("Flux Comic Pipeline Failed, falling back to Gemini image:", err);
+                            // Fallback: continue to save Gemini image
                         }
-                    ],
-                    seed: -1 // Random
-                };
+                    }
 
-                // Add prompt trigger word
-                const comicPrompt = `Comic_Klein, ${fullPrompt}`;
-
-                console.log("----------------------------------------------------------------");
-                console.log("FINAL FLUX COMIC PROMPT:", comicPrompt);
-                console.log("LORA CONFIG:", JSON.stringify(imageConfig.loras));
-                console.log("----------------------------------------------------------------");
-
-                const imageUrl = await generateImageSeedream(comicPrompt, imageConfig, modelPath);
-                const duration = (Date.now() - startTime) / 1000;
-                console.log(`Flux Comic responded in ${duration}s for shot ${shot.shot_id}`);
-
-                if (imageUrl && imageUrl.startsWith('http')) {
+                    // Standard Gemini Save (or Fallback)
+                    const imageUrl = await saveMedia(
+                        `${projectId || 'global'}_${sequenceId || 'default'}_shot_${shot.shot_id}`,
+                        finalImageData
+                    );
                     return { image_url: imageUrl };
                 }
-                const savedUrl = await saveMedia(`${projectId || 'global'}_${sequenceId || 'default'}_shot_${shot.shot_id}_comic`, imageUrl || '');
-                return { image_url: savedUrl };
+
+                // Error handling for Gemini failure
+                const errorMsg = response.candidates?.[0]?.finishReason === 'SAFETY'
+                    ? "Image blocked by safety filters. Try a different description."
+                    : "No image generated by the AI model.";
+                console.warn(`Generation failed for ${shot.shot_id}:`, errorMsg, JSON.stringify(response.candidates?.[0] || {}, null, 2));
+                throw new Error(errorMsg);
             }
 
-            console.log(`Calling Gemini (${model}) for shot ${shot.shot_id}...`);
-            const startTime = Date.now();
-            const response = await ai.models.generateContent({
-                model: model,
-                contents: { parts },
-                config: {
-                    imageConfig: {
-                        aspectRatio: "16:9"
-                    }
-                }
-            });
-            const duration = (Date.now() - startTime) / 1000;
-            console.log(`Gemini responded in ${duration}s for shot ${shot.shot_id}`);
-
-            if (response.candidates?.[0]?.finishReason) {
-                console.log(`Finish reason for ${shot.shot_id}: ${response.candidates[0].finishReason}`);
-            }
-
-            const part = response.candidates?.[0]?.content?.parts?.find((p: any) => p.inlineData);
-            if (part?.inlineData?.data) {
-                const imageUrl = await saveMedia(
-                    `${projectId || 'global'}_${sequenceId || 'default'}_shot_${shot.shot_id}`,
-                    part.inlineData.data
-                );
-                return { image_url: imageUrl };
-            }
 
             const errorMsg = response.candidates?.[0]?.finishReason === 'SAFETY'
                 ? "Image blocked by safety filters. Try a different description."
