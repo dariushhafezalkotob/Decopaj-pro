@@ -623,6 +623,11 @@ export default async function aiRoutes(server: FastifyInstance) {
                 // Add prompt trigger word
                 const comicPrompt = `Comic_Klein, ${fullPrompt}`;
 
+                console.log("----------------------------------------------------------------");
+                console.log("FINAL FLUX COMIC PROMPT:", comicPrompt);
+                console.log("LORA CONFIG:", JSON.stringify(imageConfig.loras));
+                console.log("----------------------------------------------------------------");
+
                 const imageUrl = await generateImageSeedream(comicPrompt, imageConfig, modelPath);
                 const duration = (Date.now() - startTime) / 1000;
                 console.log(`Flux Comic responded in ${duration}s for shot ${shot.shot_id}`);
@@ -747,6 +752,11 @@ export default async function aiRoutes(server: FastifyInstance) {
                 };
 
                 const comicPrompt = `Comic_Klein, ${editPrompt}. Maintain composition of the input image.`;
+
+                console.log("----------------------------------------------------------------");
+                console.log("FINAL FLUX COMIC EDIT PROMPT:", comicPrompt);
+                console.log("LORA CONFIG:", JSON.stringify(imageConfig.loras));
+                console.log("----------------------------------------------------------------");
 
                 const imageUrl = await generateImageSeedream(comicPrompt, imageConfig, modelPath);
                 const duration = (Date.now() - startTime) / 1000;
