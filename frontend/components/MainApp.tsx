@@ -768,6 +768,12 @@ const MainApp: React.FC = () => {
                             >
                                 Production
                             </button>
+                            <button
+                                onClick={() => setState(p => ({ ...p, aiModel: 'flux-comic' }))}
+                                className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest transition-all ${state.aiModel === 'flux-comic' ? 'bg-purple-500 text-zinc-950 shadow-lg shadow-purple-500/20' : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800'}`}
+                            >
+                                Comic
+                            </button>
                         </div>
                     </div>
                     <div className="text-[10px] px-4 py-1.5 rounded-full border border-emerald-500/50 text-emerald-400 bg-emerald-500/5 uppercase font-black tracking-widest">

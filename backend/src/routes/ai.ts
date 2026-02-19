@@ -432,7 +432,8 @@ export default async function aiRoutes(server: FastifyInstance) {
                                             name: { type: Type.STRING },
                                             reference_image: { type: Type.STRING },
                                             details: { type: Type.STRING },
-                                            action: { type: Type.STRING }
+
+                                            n: { type: Type.STRING }
                                         },
                                         required: ["name", "details"]
                                     }
@@ -573,7 +574,7 @@ export default async function aiRoutes(server: FastifyInstance) {
                 const width = 1344;
                 const height = 768;
 
-                const imageConfig = {
+                const imageConfig: any = {
                     images: referenceImages,
                     width,
                     height
@@ -587,6 +588,49 @@ export default async function aiRoutes(server: FastifyInstance) {
                     return { image_url: imageUrl };
                 }
                 const savedUrl = await saveMedia(`${projectId || 'global'}_${sequenceId || 'default'}_shot_${shot.shot_id}`, imageUrl || '');
+                return { image_url: savedUrl };
+            }
+
+            if (requestedModel === 'flux-comic') {
+                console.log(`Calling Flux Comic (Wavespeed) for shot ${shot.shot_id}...`);
+                const startTime = Date.now();
+                const modelPath = 'wavespeed-ai/flux-2-klein-9b/edit-lora';
+
+                // Extract reference images (same as seedream logic)
+                const referenceImages: string[] = [];
+                for (const p of parts) {
+                    if (p.inlineData && p.inlineData.data && p.inlineData.mimeType) {
+                        referenceImages.push(`data:${p.inlineData.mimeType};base64,${p.inlineData.data}`);
+                    }
+                }
+
+                // If no reference images, we might want to warn, but edit-lora might work t2i if images is empty?
+                // The API spec says images is optional.
+
+                const imageConfig = {
+                    images: referenceImages.length > 0 ? referenceImages : undefined,
+                    width: 1280, // Flux specific size
+                    height: 720,
+                    loras: [
+                        {
+                            path: "https://huggingface.co/dariushh/Comic_Flux2_V1_lora/resolve/main/Comic_Klein_V1.safetensors",
+                            scale: 0.78
+                        }
+                    ],
+                    seed: -1 // Random
+                };
+
+                // Add prompt trigger word
+                const comicPrompt = `Comic_Klein, ${fullPrompt}`;
+
+                const imageUrl = await generateImageSeedream(comicPrompt, imageConfig, modelPath);
+                const duration = (Date.now() - startTime) / 1000;
+                console.log(`Flux Comic responded in ${duration}s for shot ${shot.shot_id}`);
+
+                if (imageUrl && imageUrl.startsWith('http')) {
+                    return { image_url: imageUrl };
+                }
+                const savedUrl = await saveMedia(`${projectId || 'global'}_${sequenceId || 'default'}_shot_${shot.shot_id}_comic`, imageUrl || '');
                 return { image_url: savedUrl };
             }
 
@@ -681,6 +725,37 @@ export default async function aiRoutes(server: FastifyInstance) {
                     return { image_url: imageUrl, visual_breakdown: shot.visual_breakdown };
                 }
                 const savedUrl = await saveMedia(`${projectId || 'global'}_${sequenceId || 'default'}_shot_${shot.shot_id}_edit_${Date.now()}`, imageUrl || '');
+                return { image_url: savedUrl, visual_breakdown: shot.visual_breakdown };
+            }
+
+            if (requestedModel === 'flux-comic') {
+                console.log(`Calling Flux Comic to EDIT shot ${shot.shot_id}...`);
+                const startTime = Date.now();
+                const modelPath = 'wavespeed-ai/flux-2-klein-9b/edit-lora';
+
+                const imageConfig = {
+                    images: [(base64Data && base64Data.startsWith('http')) ? base64Data : `data:${currentMimeType};base64,${base64Data}`],
+                    width: 1280,
+                    height: 720,
+                    loras: [
+                        {
+                            path: "https://huggingface.co/dariushh/Comic_Flux2_V1_lora/resolve/main/Comic_Klein_V1.safetensors",
+                            scale: 0.78
+                        }
+                    ],
+                    seed: -1
+                };
+
+                const comicPrompt = `Comic_Klein, ${editPrompt}. Maintain composition of the input image.`;
+
+                const imageUrl = await generateImageSeedream(comicPrompt, imageConfig, modelPath);
+                const duration = (Date.now() - startTime) / 1000;
+                console.log(`Flux Comic edit responded in ${duration}s for shot ${shot.shot_id}`);
+
+                if (imageUrl && imageUrl.startsWith('http')) {
+                    return { image_url: imageUrl, visual_breakdown: shot.visual_breakdown };
+                }
+                const savedUrl = await saveMedia(`${projectId || 'global'}_${sequenceId || 'default'}_shot_${shot.shot_id}_edit_comic_${Date.now()}`, imageUrl || '');
                 return { image_url: savedUrl, visual_breakdown: shot.visual_breakdown };
             }
 
