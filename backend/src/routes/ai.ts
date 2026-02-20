@@ -149,43 +149,57 @@ export default async function aiRoutes(server: FastifyInstance) {
             throw new Error("Wavespeed API did not return a request ID.");
         }
 
-        console.log(`Wavespeed Job Created: ${requestId}. Polling for result...`);
+        console.log(`Wavespeed Job Created: ${requestId}. Polling every 3s (Max 5m)...`);
 
         // Polling loop
         let attempts = 0;
-        const maxAttempts = 120; // 120 * 1s = 120s (Matching user's example polling frequency but keeping 120s total)
+        const pollingIntervalMs = 3000; // 3 seconds
+        const maxAttempts = 100; // 100 * 3s = 300s (5 minutes)
+
         while (attempts < maxAttempts) {
-            await new Promise(r => setTimeout(r, 1000));
-            const statusResponse = await fetch(`https://api.wavespeed.ai/api/v3/predictions/${requestId}/result`, {
-                headers: { 'Authorization': `Bearer ${apiKey}` }
-            });
+            await new Promise(r => setTimeout(r, pollingIntervalMs));
 
-            if (!statusResponse.ok) {
-                console.warn(`Wavespeed Status Check Failed for ${requestId}: ${statusResponse.status}`);
-                attempts++;
-                continue;
-            }
+            try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout for status check
 
-            const statusJson: any = await statusResponse.json();
-            const data = statusJson.data || statusJson;
-            const status = data.status || 'unknown';
+                const statusResponse = await fetch(`https://api.wavespeed.ai/api/v3/predictions/${requestId}/result`, {
+                    headers: { 'Authorization': `Bearer ${apiKey}` },
+                    signal: controller.signal
+                });
+                clearTimeout(timeoutId);
 
-            console.log(`Job ${requestId} Status: ${status}`);
+                if (!statusResponse.ok) {
+                    console.warn(`Attempt ${attempts + 1}/${maxAttempts}: Wavespeed Status Check Failed (${statusResponse.status})`);
+                    attempts++;
+                    continue;
+                }
 
-            if (status === 'completed' || status === 'succeeded') {
-                // User example: resultUrl = data.outputs[0]
-                const url = (data.outputs && data.outputs[0]) || data.output_url || data.url || data.image_url || data.output;
-                if (url) return url;
+                const statusJson: any = await statusResponse.json();
+                const data = statusJson.data || statusJson;
+                const status = data.status || 'unknown';
 
-                console.warn(`Job ${requestId} marked ${status} but no URL found yet. Full Response:`, JSON.stringify(statusJson));
-            }
-            if (status === 'failed') {
-                throw new Error(`Wavespeed Job Failed: ${data.error || 'Unknown error'}`);
+                console.log(`Attempt ${attempts + 1}/${maxAttempts}: Job ${requestId} Status: ${status}`);
+
+                if (status === 'completed' || status === 'succeeded') {
+                    const url = (data.outputs && data.outputs[0]) || data.output_url || data.url || data.image_url || data.output;
+                    if (url) return url;
+                    console.warn(`Job ${requestId} marked ${status} but no URL found yet. Full Response:`, JSON.stringify(statusJson));
+                }
+                if (status === 'failed') {
+                    throw new Error(`Wavespeed Job Failed: ${data.error || 'Unknown error'}`);
+                }
+            } catch (err: any) {
+                if (err.name === 'AbortError') {
+                    console.warn(`Attempt ${attempts + 1}/${maxAttempts}: Status check request timed out.`);
+                } else {
+                    console.error(`Attempt ${attempts + 1}/${maxAttempts}: Polling error:`, err.message);
+                }
             }
             attempts++;
         }
 
-        throw new Error("Wavespeed generation timed out after 120 seconds.");
+        throw new Error(`Wavespeed generation timed out after 5 minutes (${maxAttempts} attempts).`);
     };
 
     // 0. Health check (Public)
