@@ -793,7 +793,7 @@ export default async function aiRoutes(server: FastifyInstance) {
                     seed: -1
                 };
 
-                const comicPrompt = `Comic_Klein, make it comic_klein_style. keep this image darkness and brightness. ${editPrompt}. Maintain composition of the input image.`;
+                const comicPrompt = `make it comic_klein_style. keep this image darkness and brightness. ${editPrompt}. Maintain composition of the input image.`;
 
                 console.log("----------------------------------------------------------------");
                 console.log("FINAL FLUX COMIC EDIT PROMPT:", comicPrompt);
