@@ -644,7 +644,7 @@ export default async function aiRoutes(server: FastifyInstance) {
                         const modelPath = 'wavespeed-ai/flux-2-klein-9b/edit-lora';
 
                         // Prepare the specific comic style prompt
-                        const comicPrompt = "translate this image to Comic_Flux style. strictly maintain original colors, saturation and contrast. do not alter the color palette.";
+                        const comicPrompt = "translate this image to Comic_Flux style. make it comic_klein_style. keep this image darkness and brightness.";
 
                         const imageConfig = {
                             images: [`data:image/jpeg;base64,${finalImageData}`], // Use Gemini output as input
@@ -652,8 +652,8 @@ export default async function aiRoutes(server: FastifyInstance) {
                             height: 720,
                             loras: [
                                 {
-                                    path: "https://huggingface.co/dariushh/Comic_Flux2_V1_lora/resolve/main/Comic_Klein_V1.safetensors",
-                                    scale: 1.5 // Increased to 1.5 as requested
+                                    path: "https://huggingface.co/dariushh/Klein_Style_V3/resolve/main/comic_klein_style_V1.safetensors",
+                                    scale: 1.7
                                 }
                             ],
                             seed: -1
@@ -772,14 +772,14 @@ export default async function aiRoutes(server: FastifyInstance) {
                     height: 720,
                     loras: [
                         {
-                            path: "https://huggingface.co/dariushh/Comic_Flux2_V1_lora/resolve/main/Comic_Klein_V1.safetensors",
-                            scale: 0.78
+                            path: "https://huggingface.co/dariushh/Klein_Style_V3/resolve/main/comic_klein_style_V1.safetensors",
+                            scale: 1.7
                         }
                     ],
                     seed: -1
                 };
 
-                const comicPrompt = `Comic_Klein, ${editPrompt}. Maintain composition of the input image.`;
+                const comicPrompt = `Comic_Klein, make it comic_klein_style. keep this image darkness and brightness. ${editPrompt}. Maintain composition of the input image.`;
 
                 console.log("----------------------------------------------------------------");
                 console.log("FINAL FLUX COMIC EDIT PROMPT:", comicPrompt);
