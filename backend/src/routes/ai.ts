@@ -595,7 +595,7 @@ export default async function aiRoutes(server: FastifyInstance) {
         try {
             // ASYNC WRAPPER: Return jobId immediately for Seedream/Flux Comic
             if (requestedModel === 'seedream-4.5' || requestedModel === 'flux-comic') {
-                const jobId = `gen_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+                const jobId = `${requestedModel === 'flux-comic' ? 'comic' : 'gen'}_${Date.now()}_${Math.random().toString(36).substring(7)}`;
                 activeJobs.set(jobId, { status: 'processing' });
 
                 // Start background process
@@ -603,35 +603,31 @@ export default async function aiRoutes(server: FastifyInstance) {
                     try {
                         console.log(`[JOB ${jobId}] Starting background task for model: ${requestedModel}`);
                         const startTime = Date.now();
+                        let imageUrl: string | undefined;
 
-                        let modelPath = process.env.WAVESPEED_MODEL_PATH || 'bytedance/seedream-v4.5/sequential';
-                        const referenceImages: string[] = [];
-                        for (const p of parts) {
-                            if (p.inlineData?.data && p.inlineData.mimeType) {
-                                referenceImages.push(`data:${p.inlineData.mimeType};base64,${p.inlineData.data}`);
+                        if (requestedModel === 'flux-comic') {
+                            // --- PHASE 1: GEMINI BASE GENERATION ---
+                            console.log(`[JOB ${jobId}] Phase 1: Gemini Base Generation...`);
+                            const geminiModel = 'gemini-3-pro-image-preview';
+                            const response = await ai.models.generateContent({
+                                model: geminiModel,
+                                contents: { parts },
+                                config: { imageConfig: { aspectRatio: "16:9" } }
+                            });
+
+                            const part = response.candidates?.[0]?.content?.parts?.find((p: any) => p.inlineData);
+                            if (!part?.inlineData?.data) {
+                                throw new Error(`Phase 1 Gemini failed: ${response.candidates?.[0]?.finishReason || 'No image data'}`);
                             }
-                        }
 
-                        if (referenceImages.length > 0) {
-                            console.log(`[JOB ${jobId}] Found ${referenceImages.length} reference images. Using 'edit-sequential'.`);
-                            modelPath = 'bytedance/seedream-v4.5/edit-sequential';
-                        } else if (modelPath.includes('edit')) {
-                            modelPath = 'bytedance/seedream-v4.5/sequential';
-                        }
+                            const base64Data = part.inlineData.data;
+                            const geminiDataUri = `data:image/png;base64,${base64Data}`;
 
-                        const imageConfig: any = {
-                            images: referenceImages,
-                            width: 1344,
-                            height: 768
-                        };
-
-                        let imageUrl = await generateImageSeedream(fullPrompt, imageConfig, modelPath);
-
-                        if (requestedModel === 'flux-comic' && imageUrl && imageUrl.startsWith('http')) {
+                            // --- PHASE 2: FLUX-KLEIN RESTYLING ---
                             console.log(`[JOB ${jobId}] Phase 2: Flux-Klein Restyling...`);
                             const fluxModelPath = 'wavespeed-ai/flux-2-klein-9b/edit-lora';
                             const fluxConfig = {
-                                images: [imageUrl],
+                                images: [geminiDataUri],
                                 width: 1280,
                                 height: 720,
                                 loras: [
@@ -641,8 +637,30 @@ export default async function aiRoutes(server: FastifyInstance) {
                                 seed: -1
                             };
                             const comicPrompt = "make it comic_klein_style, Comic_lines. \nkeep this image darkness and brightness, Keep this image lighting.";
-                            const comicImageUrl = await generateImageSeedream(comicPrompt, fluxConfig, fluxModelPath);
-                            if (comicImageUrl && comicImageUrl.startsWith('http')) imageUrl = comicImageUrl;
+                            imageUrl = await generateImageSeedream(comicPrompt, fluxConfig, fluxModelPath);
+
+                        } else {
+                            // --- STANDARD SEEDREAM 4.5 GENERATION ---
+                            let modelPath = process.env.WAVESPEED_MODEL_PATH || 'bytedance/seedream-v4.5/sequential';
+                            const referenceImages: string[] = [];
+                            for (const p of parts) {
+                                if (p.inlineData?.data && p.inlineData.mimeType) {
+                                    referenceImages.push(`data:${p.inlineData.mimeType};base64,${p.inlineData.data}`);
+                                }
+                            }
+
+                            if (referenceImages.length > 0) {
+                                console.log(`[JOB ${jobId}] Using 'edit-sequential' with ${referenceImages.length} refs.`);
+                                modelPath = 'bytedance/seedream-v4.5/edit-sequential';
+                            } else if (modelPath.includes('edit')) {
+                                modelPath = 'bytedance/seedream-v4.5/sequential';
+                            }
+
+                            imageUrl = await generateImageSeedream(fullPrompt, {
+                                images: referenceImages,
+                                width: 1344,
+                                height: 768
+                            }, modelPath);
                         }
 
                         const finalUrl = (imageUrl && imageUrl.startsWith('http'))
