@@ -4,6 +4,7 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { saveMedia, getMedia } from '../services/mediaService';
 import fs from 'fs';
 import path from 'path';
+import { checkSequenceContinuity } from '../services/continuityService';
 
 export default async function aiRoutes(server: FastifyInstance) {
 
@@ -309,8 +310,11 @@ export default async function aiRoutes(server: FastifyInstance) {
       1. Break the scene into logical Shots/Plans.
       2. For each shot, list the characters present in that frame.
       3. CRITICAL: For every character, object/item, AND environment/location, you MUST populate the "reference_image" field with the exact "image X" ref tag from the mapping table above if a matching asset exists.
-      4. Provide detailed physical positioning and lighting effects specifically for those characters.
-      5. Technical camera specs should be professional (e.g., 35mm lens, f/2.8, shallow depth of field).
+      4. STATEFUL CONTINUITY: Characters must maintain their state (outfits, accessories like helmets, baggage) across shots unless an action explicitly changes it. 
+         - If a character puts on a helmet in Shot 1, they MUST be wearing it in Shot 2, 3, etc., until the script says "takes off helmet".
+         - Consistently describe their appearance to match previous frames unless logically changed.
+      5. Provide detailed physical positioning and lighting effects specifically for those characters.
+      6. Technical camera specs should be professional (e.g., 35mm lens, f/2.8, shallow depth of field).
       
       Script to process: "${script}"`;
 
@@ -825,6 +829,18 @@ export default async function aiRoutes(server: FastifyInstance) {
 
         } catch (err: any) {
             console.error("Edit shot error:", err);
+            return reply.code(500).send({ message: err.message });
+        }
+    });
+
+    // 5. Check Continuity
+    server.post('/check-continuity', async (request: any, reply) => {
+        const { shots, assets } = request.body;
+        try {
+            const issues = checkSequenceContinuity(shots, assets);
+            return { issues };
+        } catch (err: any) {
+            console.error("Continuity check error:", err);
             return reply.code(500).send({ message: err.message });
         }
     });

@@ -52,6 +52,7 @@ export interface ShotPlan {
     image_url?: string;
     loading?: boolean;
     editing?: boolean;
+    isLocked?: boolean;
 }
 
 export interface Entity {
@@ -71,6 +72,7 @@ export interface Sequence {
     shots: ShotPlan[];
     assets: Entity[]; // Sequence-specific (locations/items)
     status: 'draft' | 'analyzed' | 'storyboarded';
+    continuityIssues?: ContinuityIssue[];
 }
 
 export interface Project {
@@ -109,4 +111,22 @@ export interface AppState {
     pickerTargetId: string | null;
     pickerSearch: string;
     pickerCategory: 'all' | 'character' | 'location' | 'item';
+    editingSequenceId: string | null;
+}
+
+export interface ContinuityIssue {
+    id: string;
+    shotId?: string;
+    category: 'outfit' | 'time' | 'location' | 'camera' | 'lighting' | 'other';
+    severity: 'error' | 'warning' | 'info';
+    message: string;
+    evidence: string;
+    suggestedFix?: string;
+    fixData?: {
+        type: 'update-field';
+        field: string;
+        value: any;
+        charName?: string; // For outfit fixes
+    };
+    resolved: boolean;
 }

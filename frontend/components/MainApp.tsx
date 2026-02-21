@@ -5,7 +5,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Project, Sequence, ShotPlan, ImageSize, AppState, Entity } from '../types';
 import { Reorder } from 'framer-motion';
 import { identifyEntities, performFullDecopaj, analyzeCustomShot, generateShotImage, editShotImage } from '../services/geminiService';
-import { getProjects, createProject, updateProject, deleteProject, logout, BACKEND_URL } from '../services/api';
+import { getProjects, createProject, updateProject, deleteProject, logout, checkContinuityProxy, BACKEND_URL } from '../services/api';
 import { ShotCard } from './ShotCard';
 
 const NAV_STORAGE_KEY = 'FILM_STUDIO_NAV_V1';
@@ -648,63 +648,102 @@ const MainApp: React.FC = () => {
 
     const handleGenerateStoryboard = async () => {
         if (!activeProject || !activeSequence) return;
-        setState(prev => ({ ...prev, isAnalyzing: true }));
+        setState(prev => ({ ...prev, isAnalyzing: true, error: null }));
 
         const allAssets = [...activeProject.globalAssets, ...activeSequence.assets];
 
         try {
+            // STEP 1: Full Technical Analysis
             const analysis = await performFullDecopaj(activeSequence.script, allAssets);
+
+            // STEP 2: Automatic Continuity Check
+            const continuityRes = await checkContinuityProxy(analysis.shots, allAssets);
 
             setState(prev => ({
                 ...prev,
                 currentStep: 'sequence-board',
                 isAnalyzing: false,
-                isGeneratingImages: true,
                 projects: prev.projects.map(p => p.id === prev.activeProjectId ? {
                     ...p,
-                    sequences: p.sequences.map(s => s.id === prev.activeSequenceId ? { ...s, shots: analysis.shots.map(sh => ({ ...sh, loading: true })) } : s)
+                    sequences: p.sequences.map(s => s.id === prev.activeSequenceId ? {
+                        ...s,
+                        shots: analysis.shots,
+                        continuityIssues: continuityRes.issues,
+                        status: 'analyzed'
+                    } : s)
                 } : p)
             }));
-
-            for (let i = 0; i < analysis.shots.length; i++) {
-                try {
-                    const imageUrl = await generateShotImage(
-                        analysis.shots[i],
-                        state.imageSize,
-                        allAssets,
-                        activeProject.name,
-                        activeSequence.title,
-                        activeProject.id,
-                        activeSequence.id,
-                        state.aiModel
-                    );
-                    setState(prev => ({
-                        ...prev,
-                        projects: prev.projects.map(p => p.id === prev.activeProjectId ? {
-                            ...p,
-                            sequences: p.sequences.map(s => s.id === prev.activeSequenceId ? {
-                                ...s,
-                                shots: s.shots.map((sh, idx) => idx === i ? { ...sh, image_url: imageUrl, loading: false } : sh)
-                            } : s)
-                        } : p)
-                    }));
-                } catch (err) {
-                    setState(prev => ({
-                        ...prev,
-                        projects: prev.projects.map(p => p.id === prev.activeProjectId ? {
-                            ...p,
-                            sequences: p.sequences.map(s => s.id === prev.activeSequenceId ? {
-                                ...s,
-                                shots: s.shots.map((sh, idx) => idx === i ? { ...sh, loading: false } : sh)
-                            } : s)
-                        } : p)
-                    }));
-                }
-            }
-            setState(prev => ({ ...prev, isGeneratingImages: false }));
         } catch (error: any) {
             setState(prev => ({ ...prev, isAnalyzing: false, error: error.message }));
         }
+    };
+
+    const handleStartRendering = async () => {
+        if (!activeProject || !activeSequence) return;
+        setState(prev => ({ ...prev, isGeneratingImages: true }));
+
+        const allAssets = [...activeProject.globalAssets, ...activeSequence.assets];
+        const shots = [...activeSequence.shots];
+
+        for (let i = 0; i < shots.length; i++) {
+            if (shots[i].image_url) continue; // Skip already rendered shots
+
+            try {
+                setState(prev => ({
+                    ...prev,
+                    projects: prev.projects.map(p => p.id === prev.activeProjectId ? {
+                        ...p,
+                        sequences: p.sequences.map(s => s.id === prev.activeSequenceId ? {
+                            ...s,
+                            shots: s.shots.map((sh, idx) => idx === i ? { ...sh, loading: true } : sh)
+                        } : s)
+                    } : p)
+                }));
+
+                const imageUrl = await generateShotImage(
+                    shots[i],
+                    state.imageSize,
+                    allAssets,
+                    activeProject.name,
+                    activeSequence.title,
+                    activeProject.id,
+                    activeSequence.id,
+                    state.aiModel
+                );
+
+                setState(prev => ({
+                    ...prev,
+                    projects: prev.projects.map(p => p.id === prev.activeProjectId ? {
+                        ...p,
+                        sequences: p.sequences.map(s => s.id === prev.activeSequenceId ? {
+                            ...s,
+                            shots: s.shots.map((sh, idx) => idx === i ? { ...sh, image_url: imageUrl, loading: false } : sh)
+                        } : s)
+                    } : p)
+                }));
+            } catch (err) {
+                console.error(`Render failed for shot ${i}`, err);
+                setState(prev => ({
+                    ...prev,
+                    projects: prev.projects.map(p => p.id === prev.activeProjectId ? {
+                        ...p,
+                        sequences: p.sequences.map(s => s.id === prev.activeSequenceId ? {
+                            ...s,
+                            shots: s.shots.map((sh, idx) => idx === i ? { ...sh, loading: false } : sh)
+                        } : s)
+                    } : p)
+                }));
+            }
+        }
+
+        setState(prev => ({
+            ...prev,
+            isGeneratingImages: false,
+            projects: prev.projects.map(p => p.id === prev.activeProjectId ? {
+                ...p,
+                sequences: p.sequences.map(s => s.id === prev.activeSequenceId ? { ...s, status: 'storyboarded' } : s)
+            } : p)
+        }));
     };
 
     const handleAssetUpload = (id: string, file: File, isGlobal: boolean) => {
@@ -746,6 +785,52 @@ const MainApp: React.FC = () => {
         } catch (err: any) {
             setState(prev => ({ ...prev, error: err.message }));
         }
+    };
+
+    const handleApplyContinuityFix = (shotId: string, issueId: string) => {
+        if (!activeProject || !activeSequence) return;
+        const issue = activeSequence.continuityIssues?.find(i => i.id === issueId);
+        if (!issue || !issue.fixData) return;
+
+        const { field, value, charName } = issue.fixData;
+
+        setState(prev => ({
+            ...prev,
+            projects: prev.projects.map(p => p.id === prev.activeProjectId ? {
+                ...p,
+                sequences: p.sequences.map(s => s.id === prev.activeSequenceId ? {
+                    ...s,
+                    shots: s.shots.map(sh => {
+                        if (sh.shot_id !== shotId) return sh;
+
+                        const updatedVB = { ...sh.visual_breakdown };
+                        if (field === 'scene.time') {
+                            updatedVB.scene.time = value;
+                        } else if (field === 'characters.appearance.description' && charName) {
+                            updatedVB.characters = updatedVB.characters.map(c =>
+                                c.name === charName ? { ...c, appearance: { ...c.appearance, description: value } } : c
+                            );
+                        }
+                        return { ...sh, visual_breakdown: updatedVB };
+                    }),
+                    continuityIssues: s.continuityIssues?.map(i => i.id === issueId ? { ...i, resolved: true } : i)
+                } : s)
+            } : p)
+        }));
+    };
+
+    const handleResolveIssue = (issueId: string) => {
+        if (!activeProject || !activeSequence) return;
+        setState(prev => ({
+            ...prev,
+            projects: prev.projects.map(p => p.id === prev.activeProjectId ? {
+                ...p,
+                sequences: p.sequences.map(s => s.id === prev.activeSequenceId ? {
+                    ...s,
+                    continuityIssues: s.continuityIssues?.map(i => i.id === issueId ? { ...i, resolved: true } : i)
+                } : s)
+            } : p)
+        }));
     };
 
     const handleLogout = () => {
@@ -1242,6 +1327,20 @@ const MainApp: React.FC = () => {
                                 </div>
                             </div>
                             <div className="flex items-center space-x-4 print:hidden">
+                                {activeSequence.status === 'analyzed' && (
+                                    <button
+                                        onClick={handleStartRendering}
+                                        disabled={state.isGeneratingImages}
+                                        className="bg-emerald-500 text-zinc-950 px-8 py-3 rounded-xl font-black uppercase tracking-widest hover:bg-emerald-400 transition-all text-xs shadow-xl shadow-emerald-500/20 flex items-center space-x-3"
+                                    >
+                                        {state.isGeneratingImages ? (
+                                            <div className="w-4 h-4 border-2 border-zinc-950/30 border-t-zinc-950 rounded-full animate-spin"></div>
+                                        ) : (
+                                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" /></svg>
+                                        )}
+                                        <span>{state.isGeneratingImages ? 'Rendering...' : 'Confirm & Start Rendering'}</span>
+                                    </button>
+                                )}
                                 <button
                                     onClick={() => setState(p => ({ ...p, currentStep: 'project-home', activeSequenceId: null }))}
                                     className="bg-zinc-900 border border-zinc-800 text-zinc-300 px-6 py-3 rounded-xl font-bold hover:bg-zinc-800 transition-all text-xs"
@@ -1259,6 +1358,60 @@ const MainApp: React.FC = () => {
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 pb-32 print:grid-cols-1 print:gap-12 print:pb-0">
+                            {/* Continuity Review Panel */}
+                            {activeSequence.continuityIssues && activeSequence.continuityIssues.filter(i => !i.resolved).length > 0 && (
+                                <div className="col-span-full bg-amber-500/5 border border-amber-500/20 rounded-3xl p-6 flex flex-col space-y-4 animate-in slide-in-from-top-4 print:hidden">
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center space-x-3">
+                                            <div className="w-10 h-10 bg-amber-500/20 rounded-xl flex items-center justify-center text-amber-500">
+                                                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                                            </div>
+                                            <div>
+                                                <h3 className="text-lg font-bold text-amber-500">Continuity Review Required</h3>
+                                                <p className="text-zinc-500 text-xs uppercase font-black tracking-widest">Found {activeSequence.continuityIssues.filter(i => !i.resolved).length} potential inconsistencies in the technical breakdown.</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                                        {activeSequence.continuityIssues.filter(i => !i.resolved).map(issue => (
+                                            <div key={issue.id} className="bg-zinc-950/50 border border-zinc-800 p-4 rounded-2xl space-y-2 group/issue hover:border-amber-500/30 transition-all flex flex-col">
+                                                <div className="flex justify-between items-start">
+                                                    <span className={`text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded ${issue.severity === 'error' ? 'bg-red-500 text-white' : issue.severity === 'warning' ? 'bg-amber-500 text-black' : 'bg-zinc-800 text-zinc-400'}`}>
+                                                        {issue.category}
+                                                    </span>
+                                                    <span className="text-zinc-700 text-[8px] font-black uppercase tracking-widest">Shot {issue.shotId}</span>
+                                                </div>
+                                                <p className="text-[11px] font-bold leading-tight">{issue.message}</p>
+                                                <p className="text-[9px] text-zinc-500 italic line-clamp-2">{issue.evidence}</p>
+                                                <div className="flex-1"></div>
+                                                {issue.suggestedFix && (
+                                                    <div className="pt-2 border-t border-zinc-800/50 space-y-2">
+                                                        <p className="text-[8px] font-black uppercase tracking-widest text-emerald-500 mb-1">Suggested Fix:</p>
+                                                        <p className="text-[10px] text-zinc-400">{issue.suggestedFix}</p>
+                                                        <div className="flex space-x-2 pt-1">
+                                                            {issue.fixData && (
+                                                                <button
+                                                                    onClick={() => handleApplyContinuityFix(issue.shotId!, issue.id)}
+                                                                    className="flex-1 bg-emerald-500/20 text-emerald-500 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest hover:bg-emerald-500 hover:text-zinc-950 transition-all"
+                                                                >
+                                                                    Apply Fix
+                                                                </button>
+                                                            )}
+                                                            <button
+                                                                onClick={() => handleResolveIssue(issue.id)}
+                                                                className="px-3 bg-zinc-800 text-zinc-400 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest hover:bg-zinc-700 transition-all"
+                                                            >
+                                                                Ignore
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
                             {/* Insert Prompt at index 0 */}
                             {state.insertionIndex === 0 && (
                                 <InsertPromptCard
@@ -1275,8 +1428,10 @@ const MainApp: React.FC = () => {
                                     <div className="relative group/card">
                                         <ShotCard
                                             shot={shot}
+                                            issues={activeSequence.continuityIssues?.filter(i => i.shotId === shot.shot_id)}
+                                            onApplyFix={(issueId) => handleApplyContinuityFix(shot.shot_id, issueId)}
                                             onRetry={() => handleRetryShot(shot.shot_id)}
-                                            onEdit={(prompt) => handleEditShot(shot.shot_id, prompt)}
+                                            onEdit={(prompt: string) => handleEditShot(shot.shot_id, prompt)}
                                             onDelete={() => handleDeleteShot(shot.shot_id)}
                                         />
 

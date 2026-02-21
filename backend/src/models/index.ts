@@ -34,13 +34,25 @@ const ShotSchema = new Schema({
     visual_breakdown: Schema.Types.Mixed // Storing complex JSON as Mixed for flexibility
 });
 
+const ContinuityIssueSchema = new Schema({
+    id: String,
+    shotId: String,
+    category: { type: String, enum: ['outfit', 'time', 'location', 'camera', 'lighting', 'other'] },
+    severity: { type: String, enum: ['error', 'warning', 'info'] },
+    message: String,
+    evidence: String,
+    suggestedFix: String,
+    resolved: { type: Boolean, default: false }
+});
+
 const SequenceSchema = new Schema({
     id: String,
     title: String,
     script: String,
     status: { type: String, enum: ['draft', 'analyzed', 'storyboarded'] },
     assets: [EntitySchema],
-    shots: [ShotSchema]
+    shots: [ShotSchema],
+    continuityIssues: [ContinuityIssueSchema]
 });
 
 const ProjectSchema = new Schema({

@@ -222,3 +222,12 @@ export const editShotProxy = async (originalBase64: string, editPrompt: string, 
         throw err;
     }
 };
+export const checkContinuityProxy = async (shots: any[], assets: any[]) => {
+    const res = await fetch(`${API_URL}/ai/check-continuity`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({ shots, assets })
+    });
+    if (!res.ok) throw new Error("Continuity Check Failed");
+    return await res.json();
+};
