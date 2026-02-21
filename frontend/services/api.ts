@@ -129,6 +129,37 @@ export const analyzeCustomShotProxy = async (description: string, assets: any[])
     return await res.json();
 };
 
+// Polling helper for async jobs
+const pollJobStatus = async (jobId: string): Promise<any> => {
+    const maxAttempts = 100; // 100 * 3s = 300s (5 minutes)
+    let attempts = 0;
+
+    while (attempts < maxAttempts) {
+        attempts++;
+        const res = await fetch(`${API_URL}/ai/job-status/${jobId}`, {
+            headers: getHeaders()
+        });
+
+        if (!res.ok) {
+            throw new Error(`Polling failed: ${res.statusText}`);
+        }
+
+        const job = await res.json();
+        if (job.status === 'completed') {
+            return job.data;
+        }
+        if (job.status === 'failed') {
+            throw new Error(job.error || "Async generation failed.");
+        }
+
+        console.log(`Job ${jobId} status: ${job.status}. Attempt ${attempts}...`);
+        // Wait 3 seconds before next poll
+        await new Promise(r => setTimeout(r, 3000));
+    }
+
+    throw new Error("Generation timed out. Please try again.");
+};
+
 export const generateImageProxy = async (shot: any, size: string, assets: any[], projectName: string, sequenceTitle: string, projectId: string, sequenceId: string, aiModel: string) => {
     console.log(`Starting image generation for shot ${shot.shot_id}...`);
     const startTime = Date.now();
@@ -138,16 +169,22 @@ export const generateImageProxy = async (shot: any, size: string, assets: any[],
             headers: getHeaders(),
             body: JSON.stringify({ shot, size, assets, projectName, sequenceTitle, projectId, sequenceId, model: aiModel })
         });
-        const duration = (Date.now() - startTime) / 1000;
-        console.log(`Image generation response for ${shot.shot_id} received in ${duration}s:`, res.status);
 
         if (!res.ok) {
             const errorText = await res.text().catch(() => "Unknown error");
             console.error(`Image generation FAILED for ${shot.shot_id}:`, res.status, errorText);
             throw new Error(`Image Gen Failed: ${res.status} ${res.statusText}`);
         }
-        const data = await res.json();
-        return data.image_url;
+        const result = await res.json();
+
+        // Check if it's an async job
+        if (result.jobId) {
+            console.log(`Async job started: ${result.jobId}. Polling...`);
+            const data = await pollJobStatus(result.jobId);
+            return data.image_url;
+        }
+
+        return result.image_url;
     } catch (err: any) {
         const duration = (Date.now() - startTime) / 1000;
         console.error(`Image generation NETWORK ERROR for ${shot.shot_id} after ${duration}s:`, err);
@@ -164,15 +201,21 @@ export const editShotProxy = async (originalBase64: string, editPrompt: string, 
             headers: getHeaders(),
             body: JSON.stringify({ originalBase64, editPrompt, shot, projectName, sequenceTitle, projectId, sequenceId, assets, model: aiModel })
         });
-        const duration = (Date.now() - startTime) / 1000;
-        console.log(`Edit shot response for ${shot.shot_id} received in ${duration}s:`, res.status);
 
         if (!res.ok) {
             const errorData = await res.json().catch(() => ({}));
             console.error(`Edit shot FAILED for ${shot.shot_id}:`, res.status, errorData);
             throw new Error(errorData.message || "Edit Shot Failed");
         }
-        return await res.json();
+        const result = await res.json();
+
+        // Check if it's an async job
+        if (result.jobId) {
+            console.log(`Async edit job started: ${result.jobId}. Polling...`);
+            return await pollJobStatus(result.jobId);
+        }
+
+        return result;
     } catch (err: any) {
         const duration = (Date.now() - startTime) / 1000;
         console.error(`Edit shot NETWORK ERROR for ${shot.shot_id} after ${duration}s:`, err);

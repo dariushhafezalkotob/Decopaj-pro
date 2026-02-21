@@ -14,6 +14,13 @@ export default async function aiRoutes(server: FastifyInstance) {
     const getAI = () => new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
     const mimeType = 'image/png';
 
+    // Global job store
+    const activeJobs = new Map<string, {
+        status: 'processing' | 'completed' | 'failed',
+        data?: any,
+        error?: string
+    }>();
+
     const resolveImageResource = async (input: string) => {
         if (!input) return null;
 
@@ -212,9 +219,16 @@ export default async function aiRoutes(server: FastifyInstance) {
         throw new Error(`Wavespeed generation timed out after 5 minutes (${maxAttempts} attempts).`);
     };
 
-    // 0. Health check (Public)
     server.get('/health', async () => {
         return { status: 'ok', timestamp: new Date().toISOString() };
+    });
+
+    // 0.1 Async Job Status (Public but requires auth check manually if needed, or rely on jobId secrecy)
+    server.get('/job-status/:jobId', async (request: any, reply) => {
+        const { jobId } = request.params;
+        const job = activeJobs.get(jobId);
+        if (!job) return reply.code(404).send({ message: "Job not found" });
+        return job;
     });
 
     server.addHook('preValidation', (request: any, reply, done) => {
@@ -579,123 +593,97 @@ export default async function aiRoutes(server: FastifyInstance) {
         let fullPrompt = parts.map(p => p.text || '').join('\n');
 
         try {
-            // 1. SEEDREAM 4.5 (Wavespeed) - Standard or as Base for Flux Comic
+            // ASYNC WRAPPER: Return jobId immediately for Seedream/Flux Comic
             if (requestedModel === 'seedream-4.5' || requestedModel === 'flux-comic') {
-                console.log(`Calling Seedream 4.5 (Wavespeed) for shot ${shot.shot_id}${requestedModel === 'flux-comic' ? ' (Base Image)' : ''}...`);
-                const startTime = Date.now();
+                const jobId = `gen_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+                activeJobs.set(jobId, { status: 'processing' });
 
-                let modelPath = process.env.WAVESPEED_MODEL_PATH || 'bytedance/seedream-v4.5/sequential';
-
-                // Extract any inline images from parts to send as reference images
-                const referenceImages: string[] = [];
-                for (const p of parts) {
-                    if (p.inlineData && p.inlineData.data && p.inlineData.mimeType) {
-                        referenceImages.push(`data:${p.inlineData.mimeType};base64,${p.inlineData.data}`);
-                    }
-                }
-
-                if (referenceImages.length > 0) {
-                    console.log(`Phase 1: Found ${referenceImages.length} reference images. Using 'edit-sequential' model.`);
-                    modelPath = 'bytedance/seedream-v4.5/edit-sequential';
-                } else if (modelPath && modelPath.includes('edit')) {
-                    modelPath = 'bytedance/seedream-v4.5/sequential';
-                }
-
-                const width = 1344;
-                const height = 768;
-
-                const imageConfig: any = {
-                    images: referenceImages,
-                    width,
-                    height
-                };
-
-                let imageUrl = await generateImageSeedream(fullPrompt, imageConfig, modelPath);
-
-                // --- FLUX COMIC POST-PROCESSING ---
-                if (requestedModel === 'flux-comic' && imageUrl && imageUrl.startsWith('http')) {
-                    console.log("Flux Comic Phase 2: Restyling Seedream output with Flux-Klein...");
-                    const fluxStartTime = Date.now();
-                    const fluxModelPath = 'wavespeed-ai/flux-2-klein-9b/edit-lora';
-                    const comicPrompt = "make it comic_klein_style, Comic_lines. \nkeep this image darkness and brightness, Keep this image lighting.";
-
-                    const fluxConfig = {
-                        images: [imageUrl], // Use Seedream output URL as input
-                        width: 1280,
-                        height: 720,
-                        loras: [
-                            {
-                                path: "https://huggingface.co/dariushh/Klein_Style_V3/resolve/main/comic_klein_style_V1.safetensors",
-                                scale: 1.65
-                            },
-                            {
-                                path: "dariushh/Comic_lines_style",
-                                scale: 0.8
-                            }
-                        ],
-                        seed: -1
-                    };
-
+                // Start background process
+                (async () => {
                     try {
-                        const comicImageUrl = await generateImageSeedream(comicPrompt, fluxConfig, fluxModelPath);
-                        const fluxDuration = (Date.now() - fluxStartTime) / 1000;
-                        console.log(`Flux Comic restyle finished in ${fluxDuration}s`);
-                        if (comicImageUrl && comicImageUrl.startsWith('http')) {
-                            imageUrl = comicImageUrl;
+                        console.log(`[JOB ${jobId}] Starting background task for model: ${requestedModel}`);
+                        const startTime = Date.now();
+
+                        let modelPath = process.env.WAVESPEED_MODEL_PATH || 'bytedance/seedream-v4.5/sequential';
+                        const referenceImages: string[] = [];
+                        for (const p of parts) {
+                            if (p.inlineData?.data && p.inlineData.mimeType) {
+                                referenceImages.push(`data:${p.inlineData.mimeType};base64,${p.inlineData.data}`);
+                            }
                         }
+
+                        if (referenceImages.length > 0) {
+                            console.log(`[JOB ${jobId}] Found ${referenceImages.length} reference images. Using 'edit-sequential'.`);
+                            modelPath = 'bytedance/seedream-v4.5/edit-sequential';
+                        } else if (modelPath.includes('edit')) {
+                            modelPath = 'bytedance/seedream-v4.5/sequential';
+                        }
+
+                        const imageConfig: any = {
+                            images: referenceImages,
+                            width: 1344,
+                            height: 768
+                        };
+
+                        let imageUrl = await generateImageSeedream(fullPrompt, imageConfig, modelPath);
+
+                        if (requestedModel === 'flux-comic' && imageUrl && imageUrl.startsWith('http')) {
+                            console.log(`[JOB ${jobId}] Phase 2: Flux-Klein Restyling...`);
+                            const fluxModelPath = 'wavespeed-ai/flux-2-klein-9b/edit-lora';
+                            const fluxConfig = {
+                                images: [imageUrl],
+                                width: 1280,
+                                height: 720,
+                                loras: [
+                                    { path: "https://huggingface.co/dariushh/Klein_Style_V3/resolve/main/comic_klein_style_V1.safetensors", scale: 1.65 },
+                                    { path: "dariushh/Comic_lines_style", scale: 0.8 }
+                                ],
+                                seed: -1
+                            };
+                            const comicPrompt = "make it comic_klein_style, Comic_lines. \nkeep this image darkness and brightness, Keep this image lighting.";
+                            const comicImageUrl = await generateImageSeedream(comicPrompt, fluxConfig, fluxModelPath);
+                            if (comicImageUrl && comicImageUrl.startsWith('http')) imageUrl = comicImageUrl;
+                        }
+
+                        const finalUrl = (imageUrl && imageUrl.startsWith('http'))
+                            ? imageUrl
+                            : await saveMedia(`${projectId || 'global'}_${sequenceId || 'default'}_shot_${shot.shot_id}${requestedModel === 'flux-comic' ? '_comic' : ''}`, imageUrl || '');
+
+                        activeJobs.set(jobId, { status: 'completed', data: { image_url: finalUrl } });
+                        console.log(`[JOB ${jobId}] Completed in ${(Date.now() - startTime) / 1000}s`);
+
+                        // Cleanup job after 1h
+                        setTimeout(() => activeJobs.delete(jobId), 3600000);
                     } catch (err: any) {
-                        console.error("Flux Comic Restyle Failed, using Seedream base image:", err);
+                        console.error(`[JOB ${jobId}] Failed:`, err.message);
+                        activeJobs.set(jobId, { status: 'failed', error: err.message });
                     }
-                }
+                })();
 
-                const duration = (Date.now() - startTime) / 1000;
-                console.log(`Pipeline finished in ${duration}s for shot ${shot.shot_id}`);
-
-                if (imageUrl && imageUrl.startsWith('http')) {
-                    return { image_url: imageUrl };
-                }
-                const savedUrl = await saveMedia(`${projectId || 'global'}_${sequenceId || 'default'}_shot_${shot.shot_id}${requestedModel === 'flux-comic' ? '_comic' : ''}`, imageUrl || '');
-                return { image_url: savedUrl };
+                return { jobId };
             }
 
-            // 2. GEMINI GENERATION (Only for default/legacy models, NOT for flux-comic anymore)
+            // 2. GEMINI GENERATION (Synchronous - usually < 30s)
             if (requestedModel !== 'seedream-4.5' && requestedModel !== 'flux-comic') {
                 console.log(`Calling Gemini (${model}) for shot ${shot.shot_id}...`);
                 const startTime = Date.now();
-
                 const response = await ai.models.generateContent({
                     model: model,
                     contents: { parts },
-                    config: {
-                        imageConfig: {
-                            aspectRatio: "16:9"
-                        }
-                    }
+                    config: { imageConfig: { aspectRatio: "16:9" } }
                 });
-                const duration = (Date.now() - startTime) / 1000;
-                console.log(`Gemini responded in ${duration}s for shot ${shot.shot_id}`);
-
                 const part = response.candidates?.[0]?.content?.parts?.find((p: any) => p.inlineData);
-
                 if (part?.inlineData?.data) {
-                    const finalImageData = part.inlineData.data;
                     const imageUrl = await saveMedia(
                         `${projectId || 'global'}_${sequenceId || 'default'}_shot_${shot.shot_id}`,
-                        finalImageData
+                        part.inlineData.data
                     );
                     return { image_url: imageUrl };
                 }
-
-                // Error handling for Gemini failure
-                const errorMsg = response.candidates?.[0]?.finishReason === 'SAFETY'
-                    ? "Image blocked by safety filters. Try a different description."
-                    : "No image generated by the AI model.";
-                console.warn(`Generation failed for ${shot.shot_id}:`, errorMsg, JSON.stringify(response.candidates?.[0] || {}, null, 2));
-                throw new Error(errorMsg);
+                throw new Error("No image generated.");
             }
-
         } catch (err: any) {
-            console.error(`Gemini ROUTE ERROR for ${shot.shot_id}:`, err.message);
+            console.error(`ERROR for ${shot.shot_id}:`, err.message);
             return reply.code(500).send({ message: err.message });
         }
     });
@@ -739,63 +727,54 @@ export default async function aiRoutes(server: FastifyInstance) {
   `;
 
         try {
-            if (requestedModel === 'seedream-4.5') {
-                console.log(`Calling Seedream 4.5 (Krea) to EDIT shot ${shot.shot_id}...`);
-                const startTime = Date.now();
-                // Krea image-to-image usually takes an image_url or base64
-                const imageUrl = await generateImageSeedream(`${genPromptText}\nUse this image as reference.`, {
-                    image_url: (base64Data && base64Data.startsWith('http')) ? base64Data : `data:${currentMimeType};base64,${base64Data}`
-                }, 'bytedance/seedream-v4.5/edit'); // Explicitly use edit for editing
-                const duration = (Date.now() - startTime) / 1000;
-                console.log(`Seedream edit responded in ${duration}s for shot ${shot.shot_id}`);
+            // ASYNC WRAPPER for SEEDREAM/FLUX
+            if (requestedModel === 'seedream-4.5' || requestedModel === 'flux-comic') {
+                const jobId = `edit_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+                activeJobs.set(jobId, { status: 'processing' });
 
-                if (imageUrl && imageUrl.startsWith('http')) {
-                    return { image_url: imageUrl, visual_breakdown: shot.visual_breakdown };
-                }
-                const savedUrl = await saveMedia(`${projectId || 'global'}_${sequenceId || 'default'}_shot_${shot.shot_id}_edit_${Date.now()}`, imageUrl || '');
-                return { image_url: savedUrl, visual_breakdown: shot.visual_breakdown };
-            }
+                (async () => {
+                    try {
+                        const startTime = Date.now();
+                        console.log(`[JOB ${jobId}] Starting background EDIT for: ${requestedModel}`);
 
-            if (requestedModel === 'flux-comic') {
-                console.log(`Calling Flux Comic to EDIT shot ${shot.shot_id}...`);
-                const startTime = Date.now();
-                const modelPath = 'wavespeed-ai/flux-2-klein-9b/edit-lora';
+                        let imageUrl: string | undefined;
 
-                const imageConfig = {
-                    images: [(base64Data && base64Data.startsWith('http')) ? base64Data : `data:${currentMimeType};base64,${base64Data}`],
-                    width: 1280,
-                    height: 720,
-                    loras: [
-                        {
-                            path: "https://huggingface.co/dariushh/Klein_Style_V3/resolve/main/comic_klein_style_V1.safetensors",
-                            scale: 1.65
-                        },
-                        {
-                            path: "dariushh/Comic_lines_style",
-                            scale: 0.8
+                        if (requestedModel === 'seedream-4.5') {
+                            imageUrl = await generateImageSeedream(`${genPromptText}\nUse this image as reference.`, {
+                                image_url: (base64Data && base64Data.startsWith('http')) ? base64Data : `data:${currentMimeType};base64,${base64Data}`
+                            }, 'bytedance/seedream-v4.5/edit');
+                        } else if (requestedModel === 'flux-comic') {
+                            const fluxModelPath = 'wavespeed-ai/flux-2-klein-9b/edit-lora';
+                            const imageConfig = {
+                                images: [(base64Data && base64Data.startsWith('http')) ? base64Data : `data:${currentMimeType};base64,${base64Data}`],
+                                width: 1280, height: 720,
+                                loras: [
+                                    { path: "https://huggingface.co/dariushh/Klein_Style_V3/resolve/main/comic_klein_style_V1.safetensors", scale: 1.65 },
+                                    { path: "dariushh/Comic_lines_style", scale: 0.8 }
+                                ],
+                                seed: -1
+                            };
+                            const comicPrompt = "make it comic_klein_style, Comic_lines. \nkeep this image darkness and brightness, Keep this image lighting.";
+                            imageUrl = await generateImageSeedream(comicPrompt, imageConfig, fluxModelPath);
                         }
-                    ],
-                    seed: -1
-                };
 
-                const comicPrompt = "make it comic_klein_style, Comic_lines. \nkeep this image darkness and brightness, Keep this image lighting.";
+                        const finalUrl = (imageUrl && imageUrl.startsWith('http'))
+                            ? imageUrl
+                            : await saveMedia(`${projectId || 'global'}_${sequenceId || 'default'}_shot_${shot.shot_id}_edit_${Date.now()}`, imageUrl || '');
 
-                console.log("----------------------------------------------------------------");
-                console.log("FINAL FLUX COMIC EDIT PROMPT:", comicPrompt);
-                console.log("LORA CONFIG:", JSON.stringify(imageConfig.loras));
-                console.log("----------------------------------------------------------------");
+                        activeJobs.set(jobId, { status: 'completed', data: { image_url: finalUrl, visual_breakdown: shot.visual_breakdown } });
+                        console.log(`[JOB ${jobId}] Edit completed in ${(Date.now() - startTime) / 1000}s`);
+                        setTimeout(() => activeJobs.delete(jobId), 3600000);
+                    } catch (err: any) {
+                        console.error(`[JOB ${jobId}] Edit failed:`, err.message);
+                        activeJobs.set(jobId, { status: 'failed', error: err.message });
+                    }
+                })();
 
-                const imageUrl = await generateImageSeedream(comicPrompt, imageConfig, modelPath);
-                const duration = (Date.now() - startTime) / 1000;
-                console.log(`Flux Comic edit responded in ${duration}s for shot ${shot.shot_id}`);
-
-                if (imageUrl && imageUrl.startsWith('http')) {
-                    return { image_url: imageUrl, visual_breakdown: shot.visual_breakdown };
-                }
-                const savedUrl = await saveMedia(`${projectId || 'global'}_${sequenceId || 'default'}_shot_${shot.shot_id}_edit_comic_${Date.now()}`, imageUrl || '');
-                return { image_url: savedUrl, visual_breakdown: shot.visual_breakdown };
+                return { jobId };
             }
 
+            // Synchronous Gemini Edit
             console.log(`Calling Gemini (gemini-3-pro-image-preview) to EDIT shot ${shot.shot_id}...`);
             const startTime = Date.now();
             const imgResponse = await ai.models.generateContent({
@@ -808,12 +787,6 @@ export default async function aiRoutes(server: FastifyInstance) {
                 },
                 config: { imageConfig: { aspectRatio: "16:9" } }
             });
-            const duration = (Date.now() - startTime) / 1000;
-            console.log(`Gemini edit responded in ${duration}s for shot ${shot.shot_id}`);
-
-            if (imgResponse.candidates?.[0]?.finishReason) {
-                console.log(`Edit finish reason for ${shot.shot_id}: ${imgResponse.candidates[0].finishReason}`);
-            }
 
             const imgPart = imgResponse.candidates?.[0]?.content?.parts?.find((p: any) => p.inlineData);
             if (!imgPart?.inlineData?.data) {
@@ -822,16 +795,14 @@ export default async function aiRoutes(server: FastifyInstance) {
                 throw new Error(finishReason === 'SAFETY' ? "Edit blocked by safety filters." : "Visual update failed.");
             }
 
-            console.log("Gemini image generation successful.");
             const newImageUrl = await saveMedia(
                 `${projectId || 'global'}_${sequenceId || 'default'}_shot_${shot.shot_id}_edit_${Date.now()}`,
                 imgPart.inlineData.data
             );
-            console.log(`Saved new image to: ${newImageUrl}`);
 
             return {
                 image_url: newImageUrl,
-                visual_breakdown: shot.visual_breakdown // Keep original
+                visual_breakdown: shot.visual_breakdown
             };
 
         } catch (err: any) {
