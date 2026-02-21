@@ -7,6 +7,10 @@ import path from 'path';
 
 export default async function aiRoutes(server: FastifyInstance) {
 
+    // Increase Fastify server timeouts for potentially long AI operations
+    server.server.keepAliveTimeout = 300000; // 5 minutes
+    server.server.headersTimeout = 301000; // Must be greater than keepAliveTimeout
+
     const getAI = () => new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
     const mimeType = 'image/png';
 
@@ -105,10 +109,10 @@ export default async function aiRoutes(server: FastifyInstance) {
             // Ensure loras are passed through (already in imageConfig)
         } else {
             // Existing logic for Seedream
-            if (modelPath.includes('/edit') && payload.image_url) {
+            if (modelPath.includes('edit') && payload.image_url) {
                 payload.images = [payload.image_url];
                 delete payload.image_url;
-            } else if (modelPath.includes('/edit') && !payload.images) {
+            } else if (modelPath.includes('edit') && !payload.images) {
                 if (!imageConfig || !imageConfig.images) {
                     console.warn("WARNING: Using an edit model endpoint for Text-to-Image generation without input images. Switching to 'sequential' model.");
                     modelPath = 'bytedance/seedream-v4.5/sequential';
@@ -118,11 +122,17 @@ export default async function aiRoutes(server: FastifyInstance) {
 
         // Ensure images are strictly strings (URLs or Data URIs) if provided
         if (payload.images && Array.isArray(payload.images)) {
-            // Wavespeed accepts array of strings.
-            // No specific cleaning needed if they are already valid URLs/DataURIs
+            // No changes needed
         }
 
-        console.log("Flux Payload Debug:", JSON.stringify(payload, null, 2));
+        // Clean logging of payload (hide raw base64)
+        const logPayload = { ...payload };
+        if (logPayload.images) {
+            logPayload.images = logPayload.images.map((img: string) =>
+                img.length > 100 ? `${img.substring(0, 50)}... [Base64 Data Truncated]` : img
+            );
+        }
+        console.log("Wavespeed Payload Debug:", JSON.stringify(logPayload, null, 2));
 
         // POST to start the job
         const initialResponse = await fetch(`https://api.wavespeed.ai/api/v3/${modelPath}`, {
@@ -153,8 +163,8 @@ export default async function aiRoutes(server: FastifyInstance) {
 
         // Polling loop
         let attempts = 0;
-        const pollingIntervalMs = 3000; // 3 seconds
-        const maxAttempts = 100; // 100 * 3s = 300s (5 minutes)
+        const pollingIntervalMs = 2000; // 2 seconds
+        const maxAttempts = 150; // 150 * 2s = 300s (5 minutes)
 
         while (attempts < maxAttempts) {
             await new Promise(r => setTimeout(r, pollingIntervalMs));
@@ -585,10 +595,9 @@ export default async function aiRoutes(server: FastifyInstance) {
                 }
 
                 if (referenceImages.length > 0) {
-                    console.log(`Found ${referenceImages.length} reference images. Switching to 'edit-sequential' model.`);
+                    console.log(`Phase 1: Found ${referenceImages.length} reference images. Using 'edit-sequential' model.`);
                     modelPath = 'bytedance/seedream-v4.5/edit-sequential';
-                    fullPrompt += "\nIMPORTANT: Maintain the exact visual style, color palette, and aesthetics of the provided reference images.";
-                } else if (modelPath && modelPath.includes('/edit')) {
+                } else if (modelPath && modelPath.includes('edit')) {
                     modelPath = 'bytedance/seedream-v4.5/sequential';
                 }
 

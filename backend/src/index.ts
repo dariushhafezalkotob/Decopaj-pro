@@ -15,7 +15,9 @@ dotenv.config();
 
 const server = Fastify({
     logger: true,
-    bodyLimit: 104857600 // 100MB
+    bodyLimit: 104857600, // 100MB
+    connectionTimeout: 300000, // 5 minutes
+    requestTimeout: 300000 // 5 minutes
 });
 
 server.setErrorHandler((error: any, request, reply) => {
