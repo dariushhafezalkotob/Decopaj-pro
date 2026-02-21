@@ -608,7 +608,7 @@ export default async function aiRoutes(server: FastifyInstance) {
                     console.log("Flux Comic Phase 2: Restyling Seedream output with Flux-Klein...");
                     const fluxStartTime = Date.now();
                     const fluxModelPath = 'wavespeed-ai/flux-2-klein-9b/edit-lora';
-                    const comicPrompt = "make it comic_klein_style. keep this image darkness and brightness.";
+                    const comicPrompt = "make it comic_klein_style, Comic_lines. \nkeep this image darkness and brightness, Keep this image lighting.";
 
                     const fluxConfig = {
                         images: [imageUrl], // Use Seedream output URL as input
@@ -617,7 +617,11 @@ export default async function aiRoutes(server: FastifyInstance) {
                         loras: [
                             {
                                 path: "https://huggingface.co/dariushh/Klein_Style_V3/resolve/main/comic_klein_style_V1.safetensors",
-                                scale: 1.7
+                                scale: 1.65
+                            },
+                            {
+                                path: "dariushh/Comic_lines_style",
+                                scale: 0.8
                             }
                         ],
                         seed: -1
@@ -755,13 +759,17 @@ export default async function aiRoutes(server: FastifyInstance) {
                     loras: [
                         {
                             path: "https://huggingface.co/dariushh/Klein_Style_V3/resolve/main/comic_klein_style_V1.safetensors",
-                            scale: 1.7
+                            scale: 1.65
+                        },
+                        {
+                            path: "dariushh/Comic_lines_style",
+                            scale: 0.8
                         }
                     ],
                     seed: -1
                 };
 
-                const comicPrompt = `make it comic_klein_style. keep this image darkness and brightness. ${editPrompt}. Maintain composition of the input image.`;
+                const comicPrompt = "make it comic_klein_style, Comic_lines. \nkeep this image darkness and brightness, Keep this image lighting.";
 
                 console.log("----------------------------------------------------------------");
                 console.log("FINAL FLUX COMIC EDIT PROMPT:", comicPrompt);
