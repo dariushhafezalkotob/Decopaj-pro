@@ -41,8 +41,12 @@ const AssetCard: React.FC<AssetCardProps> = ({
                     />
                 ) : <span className="text-zinc-400 truncate" title={entity.name}>{entity.name}</span>}
                 {onDelete && (
-                    <button onClick={(e) => { e.stopPropagation(); onDelete(); }} className="text-zinc-600 hover:text-red-500 opacity-0 group-hover/asset:opacity-100 transition-opacity">
-                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                    <button
+                        onClick={(e) => { e.stopPropagation(); onDelete(); }}
+                        className="text-zinc-600 hover:text-red-500 transition-colors bg-zinc-950/50 p-1.5 rounded-lg border border-white/5 hover:border-red-500/50"
+                        title="Delete Asset"
+                    >
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                     </button>
                 )}
             </div>
@@ -989,7 +993,11 @@ const MainApp: React.FC = () => {
                                         isGlobal={true}
                                         onUpdateName={(val) => setState(p => ({ ...p, projects: p.projects.map(proj => proj.id === p.activeProjectId ? { ...proj, globalAssets: (proj.globalAssets || []).map(char => char.id === c.id ? { ...char, name: val } : char) } : proj) }))}
                                         onUpload={(file) => handleAssetUpload(c.id, file, true)}
-                                        onDelete={() => setState(p => ({ ...p, projects: p.projects.map(proj => proj.id === p.activeProjectId ? { ...proj, globalAssets: (proj.globalAssets || []).filter(a => a.id !== c.id) } : proj) }))}
+                                        onDelete={() => {
+                                            if (confirm(`Are you sure you want to delete actor "${c.name || 'this unnamed asset'}"? This may affect sequences that use this asset.`)) {
+                                                setState(p => ({ ...p, projects: p.projects.map(proj => proj.id === p.activeProjectId ? { ...proj, globalAssets: (proj.globalAssets || []).filter(a => a.id !== c.id) } : proj) }));
+                                            }
+                                        }}
                                     />
                                 ))}
                                 <button onClick={() => handleAddGlobalAsset('character')} className="aspect-square border-2 border-dashed border-zinc-900 rounded-2xl flex flex-col items-center justify-center text-zinc-800 hover:border-amber-500/50 hover:text-amber-500/70 transition-all group bg-zinc-950/30">
@@ -1013,7 +1021,11 @@ const MainApp: React.FC = () => {
                                         isGlobal={true}
                                         onUpdateName={(val) => setState(p => ({ ...p, projects: p.projects.map(proj => proj.id === p.activeProjectId ? { ...proj, globalAssets: (proj.globalAssets || []).map(loc => loc.id === l.id ? { ...loc, name: val } : loc) } : proj) }))}
                                         onUpload={(file) => handleAssetUpload(l.id, file, true)}
-                                        onDelete={() => setState(p => ({ ...p, projects: p.projects.map(proj => proj.id === p.activeProjectId ? { ...proj, globalAssets: (proj.globalAssets || []).filter(a => a.id !== l.id) } : proj) }))}
+                                        onDelete={() => {
+                                            if (confirm(`Are you sure you want to delete location "${l.name || 'this unnamed location'}"? This may affect sequences that use this location.`)) {
+                                                setState(p => ({ ...p, projects: p.projects.map(proj => proj.id === p.activeProjectId ? { ...proj, globalAssets: (proj.globalAssets || []).filter(a => a.id !== l.id) } : proj) }));
+                                            }
+                                        }}
                                     />
                                 ))}
                                 <button onClick={() => handleAddGlobalAsset('location')} className="aspect-video border-2 border-dashed border-zinc-900 rounded-2xl flex flex-col items-center justify-center text-zinc-800 hover:border-emerald-500/50 hover:text-emerald-500/70 transition-all group bg-zinc-950/30">
@@ -1037,7 +1049,11 @@ const MainApp: React.FC = () => {
                                         isGlobal={true}
                                         onUpdateName={(val) => setState(p => ({ ...p, projects: p.projects.map(proj => proj.id === p.activeProjectId ? { ...proj, globalAssets: (proj.globalAssets || []).map(item => item.id === i.id ? { ...item, name: val } : item) } : proj) }))}
                                         onUpload={(file) => handleAssetUpload(i.id, file, true)}
-                                        onDelete={() => setState(p => ({ ...p, projects: p.projects.map(proj => proj.id === p.activeProjectId ? { ...proj, globalAssets: (proj.globalAssets || []).filter(a => a.id !== i.id) } : proj) }))}
+                                        onDelete={() => {
+                                            if (confirm(`Are you sure you want to delete prop "${i.name || 'this unnamed prop'}"? This may affect sequences that use this prop.`)) {
+                                                setState(p => ({ ...p, projects: p.projects.map(proj => proj.id === p.activeProjectId ? { ...proj, globalAssets: (proj.globalAssets || []).filter(a => a.id !== i.id) } : proj) }));
+                                            }
+                                        }}
                                     />
                                 ))}
                                 <button onClick={() => handleAddGlobalAsset('item')} className="aspect-square border-2 border-dashed border-zinc-900 rounded-2xl flex flex-col items-center justify-center text-zinc-800 hover:border-blue-500/50 hover:text-blue-500/70 transition-all group bg-zinc-950/30">
