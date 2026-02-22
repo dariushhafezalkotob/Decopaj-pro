@@ -31,7 +31,7 @@ const AssetCard: React.FC<AssetCardProps> = ({
 }) => (
     <div className="bg-zinc-900 border border-zinc-800 p-4 rounded-2xl space-y-3 transition-all hover:border-zinc-700 group/asset">
         <div className="flex justify-between items-center text-[10px] font-bold uppercase tracking-widest mb-1">
-            <div className="flex items-center space-x-2 flex-1 overflow-hidden mr-2">
+            <div className="flex items-center space-x-2 flex-1 overflow-hidden mr-1">
                 {isGlobal ? (
                     <input
                         className="bg-transparent border-b border-white/10 focus:border-amber-500 outline-none flex-1 text-amber-500 py-1"
@@ -40,22 +40,22 @@ const AssetCard: React.FC<AssetCardProps> = ({
                         placeholder="ENTER NAME..."
                     />
                 ) : <span className="text-zinc-400 truncate" title={entity.name}>{entity.name}</span>}
-                {onDelete && (
-                    <button
-                        onClick={(e) => { e.stopPropagation(); onDelete(); }}
-                        className="text-zinc-600 hover:text-red-500 transition-colors bg-zinc-950/50 p-1.5 rounded-lg border border-white/5 hover:border-red-500/50"
-                        title="Delete Asset"
-                    >
-                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                    </button>
-                )}
             </div>
-            <span className="text-zinc-600 whitespace-nowrap">{entity.refTag}</span>
-            {entity.id.startsWith('global') || entity.id.startsWith('scene-link') || isGlobal ? (
+            {onDelete && (
+                <button
+                    onClick={(e) => { e.stopPropagation(); onDelete(); }}
+                    className="text-zinc-600 hover:text-red-500 transition-colors bg-zinc-950/50 p-1.5 rounded-lg border border-white/5 hover:border-red-500/50 flex-shrink-0"
+                    title="Delete Asset"
+                >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                </button>
+            )}
+            <span className="text-zinc-600 whitespace-nowrap ml-2">{entity.refTag}</span>
+            {(entity.id.startsWith('global') || entity.id.startsWith('scene-link') || isGlobal) && (
                 <div className="absolute -top-1 -right-1 bg-amber-500 text-zinc-950 p-1 rounded-full shadow-lg" title="Global Asset">
                     <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path d="M10 12a2 2 0 100-4 2 2 0 000 4z" /><path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd" /></svg>
                 </div>
-            ) : null}
+            )}
         </div>
         <div
             onClick={() => document.getElementById(`upload-${entity.id}`)?.click()}
