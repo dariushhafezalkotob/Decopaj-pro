@@ -116,7 +116,8 @@ export const analyzeScriptProxy = async (script: string, assets: any[]) => {
         body: JSON.stringify({ script, assets })
     });
     if (!res.ok) throw new Error("AI Service Failed");
-    return await res.json();
+    const { jobId } = await res.json();
+    return await pollJobStatus(jobId);
 };
 
 export const analyzeCustomShotProxy = async (description: string, assets: any[]) => {
@@ -126,7 +127,8 @@ export const analyzeCustomShotProxy = async (description: string, assets: any[])
         body: JSON.stringify({ description, assets })
     });
     if (!res.ok) throw new Error("Custom Shot Analysis Failed");
-    return await res.json();
+    const { jobId } = await res.json();
+    return await pollJobStatus(jobId);
 };
 
 // Polling helper for async jobs

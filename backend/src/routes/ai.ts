@@ -296,11 +296,17 @@ export default async function aiRoutes(server: FastifyInstance) {
     server.post('/analyze-script', async (request: any, reply) => {
         const { script, assets } = request.body;
         const ai = getAI();
+        const jobId = `analysis_${Date.now()}_${Math.random().toString(36).substring(7)}`;
 
-        const safeAssets = assets || [];
-        const assetMapText = safeAssets.map((a: any) => `- ${a.name} (${a.type}): USE REF TAG "${a.refTag}"`).join('\n');
+        activeJobs.set(jobId, { status: 'processing' });
 
-        const prompt = `Role: Professional Film Director & Cinematographer.
+        // Start background process
+        (async () => {
+            try {
+                const safeAssets = assets || [];
+                const assetMapText = safeAssets.map((a: any) => `- ${a.name} (${a.type}): USE REF TAG "${a.refTag}"`).join('\n');
+
+                const prompt = `Role: Professional Film Director & Cinematographer.
       Task: Technical 'Decopaj' (shot breakdown) of the provided script.
       
       MANDATORY PRODUCTION ASSETS (Mapping table):
@@ -318,114 +324,128 @@ export default async function aiRoutes(server: FastifyInstance) {
       
       Script to process: "${script}"`;
 
-        const response = await ai.models.generateContent({
-            model: 'gemini-3-pro-preview',
-            contents: prompt,
-            config: {
-                responseMimeType: "application/json",
-                responseSchema: {
-                    type: Type.OBJECT,
-                    properties: {
-                        shots: {
-                            type: Type.ARRAY,
-                            items: {
-                                type: Type.OBJECT,
-                                properties: {
-                                    shot_id: { type: Type.STRING },
-                                    plan_type: { type: Type.STRING },
-                                    camera_specs: { type: Type.STRING },
-                                    action_segment: { type: Type.STRING },
-                                    relevant_entities: { type: Type.ARRAY, items: { type: Type.STRING } },
-                                    visual_breakdown: {
+                const response = await ai.models.generateContent({
+                    model: 'gemini-3-pro-preview',
+                    contents: prompt,
+                    config: {
+                        responseMimeType: "application/json",
+                        responseSchema: {
+                            type: Type.OBJECT,
+                            properties: {
+                                shots: {
+                                    type: Type.ARRAY,
+                                    items: {
                                         type: Type.OBJECT,
                                         properties: {
-                                            scene: {
+                                            shot_id: { type: Type.STRING },
+                                            plan_type: { type: Type.STRING },
+                                            camera_specs: { type: Type.STRING },
+                                            action_segment: { type: Type.STRING },
+                                            relevant_entities: { type: Type.ARRAY, items: { type: Type.STRING } },
+                                            visual_breakdown: {
                                                 type: Type.OBJECT,
                                                 properties: {
-                                                    environment: { type: Type.OBJECT, properties: { location_type: { type: Type.STRING }, description: { type: Type.STRING }, reference_image: { type: Type.STRING } }, required: ["location_type", "description"] },
-                                                    time: { type: Type.STRING },
-                                                    mood: { type: Type.STRING },
-                                                    color_palette: { type: Type.STRING }
-                                                },
-                                                required: ["environment", "time", "mood", "color_palette"]
-                                            },
-                                            characters: {
-                                                type: Type.ARRAY,
-                                                items: {
-                                                    type: Type.OBJECT,
-                                                    properties: {
-                                                        name: { type: Type.STRING },
-                                                        reference_image: { type: Type.STRING },
-                                                        position: { type: Type.STRING },
-                                                        appearance: { type: Type.OBJECT, properties: { description: { type: Type.STRING }, expression: { type: Type.STRING } }, required: ["description", "expression"] },
-                                                        actions: { type: Type.STRING },
-                                                        lighting_effect: { type: Type.STRING }
+                                                    scene: {
+                                                        type: Type.OBJECT,
+                                                        properties: {
+                                                            environment: { type: Type.OBJECT, properties: { location_type: { type: Type.STRING }, description: { type: Type.STRING }, reference_image: { type: Type.STRING } }, required: ["location_type", "description"] },
+                                                            time: { type: Type.STRING },
+                                                            mood: { type: Type.STRING },
+                                                            color_palette: { type: Type.STRING }
+                                                        },
+                                                        required: ["environment", "time", "mood", "color_palette"]
                                                     },
-                                                    required: ["name", "reference_image", "position", "appearance", "actions", "lighting_effect"]
-                                                }
-                                            },
-                                            objects: {
-                                                type: Type.ARRAY,
-                                                items: {
-                                                    type: Type.OBJECT,
-                                                    properties: {
-                                                        name: { type: Type.STRING },
-                                                        reference_image: { type: Type.STRING },
-                                                        details: { type: Type.STRING },
-                                                        action: { type: Type.STRING }
+                                                    characters: {
+                                                        type: Type.ARRAY,
+                                                        items: {
+                                                            type: Type.OBJECT,
+                                                            properties: {
+                                                                name: { type: Type.STRING },
+                                                                reference_image: { type: Type.STRING },
+                                                                position: { type: Type.STRING },
+                                                                appearance: { type: Type.OBJECT, properties: { description: { type: Type.STRING }, expression: { type: Type.STRING } }, required: ["description", "expression"] },
+                                                                actions: { type: Type.STRING },
+                                                                lighting_effect: { type: Type.STRING }
+                                                            },
+                                                            required: ["name", "reference_image", "position", "appearance", "actions", "lighting_effect"]
+                                                        }
                                                     },
-                                                    required: ["name", "details"]
-                                                }
-                                            },
-                                            framing_composition: {
-                                                type: Type.OBJECT,
-                                                properties: {
-                                                    shot_type: { type: Type.STRING },
-                                                    framing: { type: Type.STRING },
-                                                    perspective: { type: Type.STRING }
+                                                    objects: {
+                                                        type: Type.ARRAY,
+                                                        items: {
+                                                            type: Type.OBJECT,
+                                                            properties: {
+                                                                name: { type: Type.STRING },
+                                                                reference_image: { type: Type.STRING },
+                                                                details: { type: Type.STRING },
+                                                                action: { type: Type.STRING }
+                                                            },
+                                                            required: ["name", "details"]
+                                                        }
+                                                    },
+                                                    framing_composition: {
+                                                        type: Type.OBJECT,
+                                                        properties: {
+                                                            shot_type: { type: Type.STRING },
+                                                            framing: { type: Type.STRING },
+                                                            perspective: { type: Type.STRING }
+                                                        },
+                                                        required: ["shot_type", "framing", "perspective"]
+                                                    },
+                                                    camera: {
+                                                        type: Type.OBJECT,
+                                                        properties: {
+                                                            lens: { type: Type.OBJECT, properties: { focal_length_mm: { type: Type.NUMBER }, type: { type: Type.STRING } }, required: ["focal_length_mm", "type"] },
+                                                            settings: { type: Type.OBJECT, properties: { aperture: { type: Type.STRING }, focus: { type: Type.STRING } }, required: ["aperture", "focus"] }
+                                                        },
+                                                        required: ["lens", "settings"]
+                                                    },
+                                                    lighting: {
+                                                        type: Type.OBJECT,
+                                                        properties: {
+                                                            key: { type: Type.STRING },
+                                                            quality: { type: Type.STRING },
+                                                            color_contrast: { type: Type.STRING }
+                                                        },
+                                                        required: ["key", "quality", "color_contrast"]
+                                                    }
                                                 },
-                                                required: ["shot_type", "framing", "perspective"]
-                                            },
-                                            camera: {
-                                                type: Type.OBJECT,
-                                                properties: {
-                                                    lens: { type: Type.OBJECT, properties: { focal_length_mm: { type: Type.NUMBER }, type: { type: Type.STRING } }, required: ["focal_length_mm", "type"] },
-                                                    settings: { type: Type.OBJECT, properties: { aperture: { type: Type.STRING }, focus: { type: Type.STRING } }, required: ["aperture", "focus"] }
-                                                },
-                                                required: ["lens", "settings"]
-                                            },
-                                            lighting: {
-                                                type: Type.OBJECT,
-                                                properties: {
-                                                    key: { type: Type.STRING },
-                                                    quality: { type: Type.STRING },
-                                                    color_contrast: { type: Type.STRING }
-                                                },
-                                                required: ["key", "quality", "color_contrast"]
+                                                required: ["scene", "characters", "camera", "lighting", "framing_composition"]
                                             }
                                         },
-                                        required: ["scene", "characters", "camera", "lighting", "framing_composition"]
+                                        required: ["shot_id", "plan_type", "visual_breakdown", "relevant_entities"]
                                     }
-                                },
-                                required: ["shot_id", "plan_type", "visual_breakdown", "relevant_entities"]
-                            }
+                                }
+                            },
+                            required: ["shots"]
                         }
-                    },
-                    required: ["shots"]
-                }
-            }
-        });
+                    }
+                });
 
-        return JSON.parse(response.text || '{"shots": []}');
+                const result = JSON.parse(response.text || '{"shots": []}');
+                activeJobs.set(jobId, { status: 'completed', data: result });
+                setTimeout(() => activeJobs.delete(jobId), 3600000);
+            } catch (err: any) {
+                console.error(`[ANALYSIS JOB ${jobId}] Failed:`, err.message);
+                activeJobs.set(jobId, { status: 'failed', error: err.message });
+            }
+        })();
+
+        return { jobId };
     });
 
     server.post('/analyze-custom-shot', async (request: any, reply) => {
         const { description, assets } = request.body;
         const ai = getAI();
+        const jobId = `custom_shot_${Date.now()}_${Math.random().toString(36).substring(7)}`;
 
-        const mappingText = assets.map((a: any) => `- ${a.name} (${a.type}): use "${a.refTag}"`).join('\n');
+        activeJobs.set(jobId, { status: 'processing' });
 
-        const prompt = `
+        (async () => {
+            try {
+                const mappingText = assets.map((a: any) => `- ${a.name} (${a.type}): use "${a.refTag}"`).join('\n');
+
+                const prompt = `
       You are a cinematic director. Analyze the following manual shot description and create a technical cinematic breakdown.
       
       USER DESCRIPTION: "${description}"
@@ -442,96 +462,105 @@ export default async function aiRoutes(server: FastifyInstance) {
       Return a single ShotPlan object.
     `;
 
-        const response = await ai.models.generateContent({
-            model: 'gemini-3-pro-preview',
-            contents: prompt,
-            config: {
-                responseMimeType: "application/json",
-                responseSchema: {
-                    type: Type.OBJECT,
-                    properties: {
-                        shot_id: { type: Type.STRING },
-                        plan_type: { type: Type.STRING },
-                        action_segment: { type: Type.STRING },
-                        relevant_entities: { type: Type.ARRAY, items: { type: Type.STRING } },
-                        visual_breakdown: {
+                const response = await ai.models.generateContent({
+                    model: 'gemini-3-pro-preview',
+                    contents: prompt,
+                    config: {
+                        responseMimeType: "application/json",
+                        responseSchema: {
                             type: Type.OBJECT,
                             properties: {
-                                scene: {
+                                shot_id: { type: Type.STRING },
+                                plan_type: { type: Type.STRING },
+                                action_segment: { type: Type.STRING },
+                                relevant_entities: { type: Type.ARRAY, items: { type: Type.STRING } },
+                                visual_breakdown: {
                                     type: Type.OBJECT,
                                     properties: {
-                                        environment: { type: Type.OBJECT, properties: { location_type: { type: Type.STRING }, description: { type: Type.STRING }, reference_image: { type: Type.STRING } }, required: ["location_type", "description"] },
-                                        time: { type: Type.STRING },
-                                        mood: { type: Type.STRING },
-                                        color_palette: { type: Type.STRING }
-                                    },
-                                    required: ["environment", "time", "mood", "color_palette"]
-                                },
-                                characters: {
-                                    type: Type.ARRAY,
-                                    items: {
-                                        type: Type.OBJECT,
-                                        properties: {
-                                            name: { type: Type.STRING },
-                                            reference_image: { type: Type.STRING },
-                                            position: { type: Type.STRING },
-                                            appearance: { type: Type.OBJECT, properties: { description: { type: Type.STRING }, expression: { type: Type.STRING } }, required: ["description", "expression"] },
-                                            actions: { type: Type.STRING },
-                                            lighting_effect: { type: Type.STRING }
+                                        scene: {
+                                            type: Type.OBJECT,
+                                            properties: {
+                                                environment: { type: Type.OBJECT, properties: { location_type: { type: Type.STRING }, description: { type: Type.STRING }, reference_image: { type: Type.STRING } }, required: ["location_type", "description"] },
+                                                time: { type: Type.STRING },
+                                                mood: { type: Type.STRING },
+                                                color_palette: { type: Type.STRING }
+                                            },
+                                            required: ["environment", "time", "mood", "color_palette"]
                                         },
-                                        required: ["name", "reference_image", "position", "appearance", "actions", "lighting_effect"]
-                                    }
-                                },
-                                objects: {
-                                    type: Type.ARRAY,
-                                    items: {
-                                        type: Type.OBJECT,
-                                        properties: {
-                                            name: { type: Type.STRING },
-                                            reference_image: { type: Type.STRING },
-                                            details: { type: Type.STRING },
+                                        characters: {
+                                            type: Type.ARRAY,
+                                            items: {
+                                                type: Type.OBJECT,
+                                                properties: {
+                                                    name: { type: Type.STRING },
+                                                    reference_image: { type: Type.STRING },
+                                                    position: { type: Type.STRING },
+                                                    appearance: { type: Type.OBJECT, properties: { description: { type: Type.STRING }, expression: { type: Type.STRING } }, required: ["description", "expression"] },
+                                                    actions: { type: Type.STRING },
+                                                    lighting_effect: { type: Type.STRING }
+                                                },
+                                                required: ["name", "reference_image", "position", "appearance", "actions", "lighting_effect"]
+                                            }
+                                        },
+                                        objects: {
+                                            type: Type.ARRAY,
+                                            items: {
+                                                type: Type.OBJECT,
+                                                properties: {
+                                                    name: { type: Type.STRING },
+                                                    reference_image: { type: Type.STRING },
+                                                    details: { type: Type.STRING },
 
-                                            n: { type: Type.STRING }
+                                                    n: { type: Type.STRING }
+                                                },
+                                                required: ["name", "details"]
+                                            }
                                         },
-                                        required: ["name", "details"]
-                                    }
-                                },
-                                framing_composition: {
-                                    type: Type.OBJECT,
-                                    properties: {
-                                        shot_type: { type: Type.STRING },
-                                        framing: { type: Type.STRING },
-                                        perspective: { type: Type.STRING }
+                                        framing_composition: {
+                                            type: Type.OBJECT,
+                                            properties: {
+                                                shot_type: { type: Type.STRING },
+                                                framing: { type: Type.STRING },
+                                                perspective: { type: Type.STRING }
+                                            },
+                                            required: ["shot_type", "framing", "perspective"]
+                                        },
+                                        camera: {
+                                            type: Type.OBJECT,
+                                            properties: {
+                                                lens: { type: Type.OBJECT, properties: { focal_length_mm: { type: Type.NUMBER }, type: { type: Type.STRING } }, required: ["focal_length_mm", "type"] },
+                                                settings: { type: Type.OBJECT, properties: { aperture: { type: Type.STRING }, focus: { type: Type.STRING } }, required: ["aperture", "focus"] }
+                                            },
+                                            required: ["lens", "settings"]
+                                        },
+                                        lighting: {
+                                            type: Type.OBJECT,
+                                            properties: {
+                                                key: { type: Type.STRING },
+                                                quality: { type: Type.STRING },
+                                                color_contrast: { type: Type.STRING }
+                                            },
+                                            required: ["key", "quality", "color_contrast"]
+                                        }
                                     },
-                                    required: ["shot_type", "framing", "perspective"]
-                                },
-                                camera: {
-                                    type: Type.OBJECT,
-                                    properties: {
-                                        lens: { type: Type.OBJECT, properties: { focal_length_mm: { type: Type.NUMBER }, type: { type: Type.STRING } }, required: ["focal_length_mm", "type"] },
-                                        settings: { type: Type.OBJECT, properties: { aperture: { type: Type.STRING }, focus: { type: Type.STRING } }, required: ["aperture", "focus"] }
-                                    },
-                                    required: ["lens", "settings"]
-                                },
-                                lighting: {
-                                    type: Type.OBJECT,
-                                    properties: {
-                                        key: { type: Type.STRING },
-                                        quality: { type: Type.STRING },
-                                        color_contrast: { type: Type.STRING }
-                                    },
-                                    required: ["key", "quality", "color_contrast"]
+                                    required: ["scene", "characters", "camera", "lighting", "framing_composition"]
                                 }
                             },
-                            required: ["scene", "characters", "camera", "lighting", "framing_composition"]
+                            required: ["shot_id", "plan_type", "visual_breakdown", "relevant_entities"]
                         }
-                    },
-                    required: ["shot_id", "plan_type", "visual_breakdown", "relevant_entities"]
-                }
-            }
-        });
+                    }
+                });
 
-        return JSON.parse(response.text || '{}');
+                const result = JSON.parse(response.text || '{}');
+                activeJobs.set(jobId, { status: 'completed', data: result });
+                setTimeout(() => activeJobs.delete(jobId), 3600000);
+            } catch (err: any) {
+                console.error(`[CUSTOM SHOT JOB ${jobId}] Failed:`, err.message);
+                activeJobs.set(jobId, { status: 'failed', error: err.message });
+            }
+        })();
+
+        return { jobId };
     });
 
     server.post('/generate-image', async (request: any, reply) => {
