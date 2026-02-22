@@ -265,7 +265,7 @@ export default async function aiRoutes(server: FastifyInstance) {
       Script: "${script}"`;
 
         const response = await ai.models.generateContent({
-            model: 'gemini-3-flash-preview',
+            model: 'gemini-1.5-flash',
             contents: prompt,
             config: {
                 responseMimeType: "application/json",
@@ -319,7 +319,7 @@ export default async function aiRoutes(server: FastifyInstance) {
       Script to process: "${script}"`;
 
         const response = await ai.models.generateContent({
-            model: 'gemini-3-pro-preview',
+            model: 'gemini-1.5-pro',
             contents: prompt,
             config: {
                 responseMimeType: "application/json",
@@ -443,7 +443,7 @@ export default async function aiRoutes(server: FastifyInstance) {
     `;
 
         const response = await ai.models.generateContent({
-            model: 'gemini-3-pro-preview',
+            model: 'gemini-1.5-pro',
             contents: prompt,
             config: {
                 responseMimeType: "application/json",
@@ -534,14 +534,22 @@ export default async function aiRoutes(server: FastifyInstance) {
         return JSON.parse(response.text || '{}');
     });
 
-    // 3. Generate Image
     server.post('/generate-image', async (request: any, reply) => {
-        const { shot, size, assets, projectName, sequenceTitle, projectId, sequenceId, model: requestedModel } = request.body;
+        const { shot, size, assets, projectName, sequenceTitle, projectId, sequenceId, model: requestedModel, previousShotUrl } = request.body;
         const ai = getAI();
         const parts: any[] = [];
 
         // High resolution model selection
-        const model = 'gemini-3-pro-image-preview';
+        const model = 'gemini-1.5-pro';
+
+        // Add Previous Shot Context if available
+        if (previousShotUrl) {
+            const prevRes = await resolveImageResource(previousShotUrl);
+            if (prevRes) {
+                parts.push({ inlineData: { data: prevRes.data, mimeType: prevRes.mimeType } });
+                parts.push({ text: `PREVIOUS SHOT REFERENCE: This is the exact frame that immediately precedes the current shot. Maintain visual continuity (characters, outfits, props, lighting) based on this image unless the script explicitly states a change.` });
+            }
+        }
 
         const envRefTag = shot.visual_breakdown.scene.environment.reference_image;
         const locationAsset = assets.find((a: any) => a.refTag === envRefTag) || assets.find((a: any) => a.type === 'location' && shot.relevant_entities.includes(a.name));
@@ -612,7 +620,7 @@ export default async function aiRoutes(server: FastifyInstance) {
                         if (requestedModel === 'flux-comic') {
                             // --- PHASE 1: GEMINI BASE GENERATION ---
                             console.log(`[JOB ${jobId}] Phase 1: Gemini Base Generation...`);
-                            const geminiModel = 'gemini-3-pro-image-preview';
+                            const geminiModel = 'gemini-1.5-pro';
                             const response = await ai.models.generateContent({
                                 model: geminiModel,
                                 contents: { parts },
@@ -797,10 +805,10 @@ export default async function aiRoutes(server: FastifyInstance) {
             }
 
             // Synchronous Gemini Edit
-            console.log(`Calling Gemini (gemini-3-pro-image-preview) to EDIT shot ${shot.shot_id}...`);
+            console.log(`Calling Gemini (gemini-1.5-pro) to EDIT shot ${shot.shot_id}...`);
             const startTime = Date.now();
             const imgResponse = await ai.models.generateContent({
-                model: 'gemini-3-pro-image-preview',
+                model: 'gemini-1.5-pro',
                 contents: {
                     parts: [
                         { inlineData: { data: base64Data, mimeType: currentMimeType } },
