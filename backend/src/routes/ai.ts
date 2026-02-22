@@ -265,7 +265,7 @@ export default async function aiRoutes(server: FastifyInstance) {
       Script: "${script}"`;
 
         const response = await ai.models.generateContent({
-            model: 'gemini-1.5-flash',
+            model: 'gemini-3-flash-preview',
             contents: prompt,
             config: {
                 responseMimeType: "application/json",
@@ -319,7 +319,7 @@ export default async function aiRoutes(server: FastifyInstance) {
       Script to process: "${script}"`;
 
         const response = await ai.models.generateContent({
-            model: 'gemini-1.5-pro',
+            model: 'gemini-3-pro-preview',
             contents: prompt,
             config: {
                 responseMimeType: "application/json",
@@ -443,7 +443,7 @@ export default async function aiRoutes(server: FastifyInstance) {
     `;
 
         const response = await ai.models.generateContent({
-            model: 'gemini-1.5-pro',
+            model: 'gemini-3-pro-preview',
             contents: prompt,
             config: {
                 responseMimeType: "application/json",
@@ -540,7 +540,7 @@ export default async function aiRoutes(server: FastifyInstance) {
         const parts: any[] = [];
 
         // High resolution model selection
-        const model = 'gemini-1.5-pro';
+        const model = 'gemini-3-pro-image-preview';
 
         // Add Previous Shot Context if available
         if (previousShotUrl) {
@@ -620,7 +620,7 @@ export default async function aiRoutes(server: FastifyInstance) {
                         if (requestedModel === 'flux-comic') {
                             // --- PHASE 1: GEMINI BASE GENERATION ---
                             console.log(`[JOB ${jobId}] Phase 1: Gemini Base Generation...`);
-                            const geminiModel = 'gemini-1.5-pro';
+                            const geminiModel = 'gemini-3-pro-image-preview';
                             const response = await ai.models.generateContent({
                                 model: geminiModel,
                                 contents: { parts },
@@ -805,10 +805,10 @@ export default async function aiRoutes(server: FastifyInstance) {
             }
 
             // Synchronous Gemini Edit
-            console.log(`Calling Gemini (gemini-1.5-pro) to EDIT shot ${shot.shot_id}...`);
+            console.log(`Calling Gemini (gemini-3-pro-image-preview) to EDIT shot ${shot.shot_id}...`);
             const startTime = Date.now();
             const imgResponse = await ai.models.generateContent({
-                model: 'gemini-1.5-pro',
+                model: 'gemini-3-pro-image-preview',
                 contents: {
                     parts: [
                         { inlineData: { data: base64Data, mimeType: currentMimeType } },
