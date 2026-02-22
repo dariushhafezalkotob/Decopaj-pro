@@ -1354,7 +1354,7 @@ const MainApp: React.FC = () => {
                             <div className="flex items-center space-x-4 print:hidden">
                                 {activeSequence.status === 'analyzed' && (
                                     <button
-                                        onClick={handleStartRendering}
+                                        onClick={() => handleStartRendering()}
                                         disabled={state.isGeneratingImages}
                                         className="bg-emerald-500 text-zinc-950 px-8 py-3 rounded-xl font-black uppercase tracking-widest hover:bg-emerald-400 transition-all text-xs shadow-xl shadow-emerald-500/20 flex items-center space-x-3"
                                     >
