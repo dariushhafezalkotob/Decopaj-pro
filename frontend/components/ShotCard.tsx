@@ -50,7 +50,7 @@ export const ShotCard = ({ shot, onRetry, onEdit, onDelete, issues = [], onApply
                     </div>
                 ) : shot.image_url ? (
                     <img
-                        src={shot.image_url.startsWith('/') ? `${BACKEND_URL}${shot.image_url} ` : shot.image_url}
+                        src={shot.image_url.startsWith('/') ? `${BACKEND_URL}${shot.image_url}` : shot.image_url}
                         alt={shot.plan_type}
                         onClick={() => setIsLightboxOpen(true)}
                         className="w-full h-full object-cover cursor-zoom-in hover:scale-105 transition-transform duration-500"
@@ -74,14 +74,14 @@ export const ShotCard = ({ shot, onRetry, onEdit, onDelete, issues = [], onApply
                     <button
                         onClick={() => setShowJson(!showJson)}
                         title="View Raw JSON"
-                        className={`bg - zinc - 950 / 80 backdrop - blur - md w - 8 h - 8 rounded - full border flex items - center justify - center text - white transition - all ${showJson ? 'border-amber-500 text-amber-500' : 'border-white/10'} `}
+                        className={`bg-zinc-950/80 backdrop-blur-md w-8 h-8 rounded-full border flex items-center justify-center text-white transition-all ${showJson ? 'border-amber-500 text-amber-500' : 'border-white/10'}`}
                     >
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" /></svg>
                     </button>
                     <button
                         onClick={() => setShowMeta(!showMeta)}
                         title="View Metadata"
-                        className={`bg - zinc - 950 / 80 backdrop - blur - md w - 8 h - 8 rounded - full border flex items - center justify - center text - white transition - all ${showMeta ? 'border-amber-500 text-amber-500' : 'border-white/10'} `}
+                        className={`bg-zinc-950/80 backdrop-blur-md w-8 h-8 rounded-full border flex items-center justify-center text-white transition-all ${showMeta ? 'border-amber-500 text-amber-500' : 'border-white/10'}`}
                     >
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                     </button>
@@ -108,7 +108,7 @@ export const ShotCard = ({ shot, onRetry, onEdit, onDelete, issues = [], onApply
                                         onClick={async () => {
                                             try {
                                                 const fileName = `shot_${shot.shot_id}.png`;
-                                                const fullUrl = shot.image_url?.startsWith('/') ? `${BACKEND_URL}${shot.image_url} ` : shot.image_url;
+                                                const fullUrl = shot.image_url?.startsWith('/') ? `${BACKEND_URL}${shot.image_url}` : shot.image_url;
                                                 const res = await fetch(fullUrl!);
                                                 const blob = await res.blob();
                                                 const url = window.URL.createObjectURL(blob);
@@ -137,7 +137,7 @@ export const ShotCard = ({ shot, onRetry, onEdit, onDelete, issues = [], onApply
                                     </button>
                                     <button
                                         onClick={() => setIsEditingMode(!isEditingMode)}
-                                        className={`text - [10px] font - black uppercase tracking - widest px - 3 py - 1 rounded - full border transition - all print:hidden ${isEditingMode ? 'border-amber-500 text-amber-500 bg-amber-500/10' : 'border-zinc-700 text-zinc-500 hover:border-zinc-500 hover:text-zinc-300'} `}
+                                        className={`text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full border transition-all print:hidden ${isEditingMode ? 'border-amber-500 text-amber-500 bg-amber-500/10' : 'border-zinc-700 text-zinc-500 hover:border-zinc-500 hover:text-zinc-300'}`}
                                     >
                                         {isEditingMode ? 'Cancel' : 'Modify'}
                                     </button>
@@ -180,7 +180,7 @@ export const ShotCard = ({ shot, onRetry, onEdit, onDelete, issues = [], onApply
                         </p>
                     </div>
 
-                    <div className={`${showMeta ? 'block' : 'hidden'} print:block pt - 4 border - t border - zinc - 800 print: border - zinc - 200`}>
+                    <div className={`${showMeta ? 'block' : 'hidden'} print:block pt-4 border-t border-zinc-800 print:border-zinc-200`}>
                         <span className="text-[9px] uppercase font-black text-zinc-600 block mb-2 tracking-widest print:text-zinc-500 print:text-[10px]">Technical Data</span>
                         <div className={`mb-4 p-2 rounded-lg border ${issues.some(i => i.category === 'time' && !i.resolved) ? 'bg-amber-500/10 border-amber-500/30' : 'border-zinc-800/30'}`}>
                             <div className="flex justify-between text-[8px] uppercase font-black tracking-widest text-zinc-600 mb-1">
@@ -260,7 +260,7 @@ export const ShotCard = ({ shot, onRetry, onEdit, onDelete, issues = [], onApply
                         </div>
                     </div>
 
-                    <div className={`${showJson ? 'block' : 'hidden'} print:hidden pt - 4 border - t border - zinc - 800`}>
+                    <div className={`${showJson ? 'block' : 'hidden'} print:hidden pt-4 border-t border-zinc-800`}>
                         <span className="text-[9px] uppercase font-black text-zinc-600 block mb-2 tracking-widest">Decopaj JSON</span>
                         <div className="bg-zinc-950 p-3 rounded-lg border border-zinc-800 overflow-x-auto">
                             <pre className="text-[9px] text-amber-500/80 mono leading-tight">
@@ -298,7 +298,7 @@ export const ShotCard = ({ shot, onRetry, onEdit, onDelete, issues = [], onApply
                         </button>
 
                         <img
-                            src={shot.image_url.startsWith('/') ? `${BACKEND_URL}${shot.image_url} ` : shot.image_url}
+                            src={shot.image_url.startsWith('/') ? `${BACKEND_URL}${shot.image_url}` : shot.image_url}
                             alt={shot.plan_type}
                             className="max-w-[90vw] max-h-[85vh] w-auto h-auto object-contain shadow-2xl rounded-lg animate-in zoom-in-95 duration-300"
                             onClick={(e) => e.stopPropagation()}
