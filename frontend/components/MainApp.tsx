@@ -663,6 +663,26 @@ const MainApp: React.FC = () => {
             // STEP 2: Automatic Continuity Check
             const continuityRes = await checkContinuityProxy(analysis.shots, allAssets);
 
+            // STEP 3: AUTO-APPLY FIXES
+            let finalShots = [...analysis.shots];
+            continuityRes.issues.forEach((issue: any) => {
+                if (!issue.fixData) return;
+                const { field, value, charName } = issue.fixData;
+                finalShots = finalShots.map(sh => {
+                    if (sh.shot_id !== issue.shotId) return sh;
+                    const updatedVB = { ...sh.visual_breakdown };
+                    if (field === 'scene.time') {
+                        updatedVB.scene.time = value;
+                    } else if (field === 'characters.appearance.description' && charName) {
+                        updatedVB.characters = updatedVB.characters.map(c =>
+                            c.name === charName ? { ...c, appearance: { ...c.appearance, description: value } } : c
+                        );
+                    }
+                    return { ...sh, visual_breakdown: updatedVB };
+                });
+                issue.resolved = true;
+            });
+
             setState(prev => ({
                 ...prev,
                 currentStep: 'sequence-board',
@@ -671,7 +691,7 @@ const MainApp: React.FC = () => {
                     ...p,
                     sequences: p.sequences.map(s => s.id === prev.activeSequenceId ? {
                         ...s,
-                        shots: analysis.shots,
+                        shots: finalShots,
                         continuityIssues: continuityRes.issues,
                         status: 'analyzed'
                     } : s)
@@ -680,7 +700,7 @@ const MainApp: React.FC = () => {
 
             // AUTO-START RENDERING: Skip manual confirmation
             setTimeout(() => {
-                handleStartRendering(analysis.shots, allAssets);
+                handleStartRendering(finalShots, allAssets);
             }, 500);
 
         } catch (error: any) {
