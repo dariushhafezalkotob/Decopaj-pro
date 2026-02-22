@@ -672,21 +672,31 @@ export default async function aiRoutes(server: FastifyInstance) {
             }
         }
 
+        const cameraAngle = (shot.visual_breakdown.framing_composition.camera_angle || 'standard').replace(/_/g, ' ');
+        const shotSize = (shot.visual_breakdown.framing_composition.shot_size || 'standard').replace(/_/g, ' ');
+        const focalLength = shot.visual_breakdown.camera.lens.focal_length_mm;
+        const lensDesc = focalLength <= 24 ? "Wide-angle lens with slight perspective distortion"
+            : focalLength >= 85 ? "Telephoto lens with compressed depth"
+                : "Standard cinematic prime lens";
+
         parts.push({
             text: `
-      SCENE CONTEXT: "${shot.action_segment}"
-      SHOT TYPE: ${shot.visual_breakdown.framing_composition.shot_type}, ${shot.visual_breakdown.framing_composition.framing}
-      CINEMATIC SPECS:
-        Angle: ${shot.visual_breakdown.framing_composition.camera_angle || 'standard'}
-        Size: ${shot.visual_breakdown.framing_composition.shot_size || 'standard'}
-        Depth: ${shot.visual_breakdown.framing_composition.depth || 'standard'}
-        Focus: ${shot.visual_breakdown.framing_composition.focus || 'standard'}
-        Emphasis: ${shot.visual_breakdown.framing_composition.scale_emphasis || 'none'}
-      CAMERA DATA: Lens ${shot.visual_breakdown.camera.lens.focal_length_mm}mm, Aperture ${shot.visual_breakdown.camera.settings.aperture}
-      LIGHTING: ${shot.visual_breakdown.lighting.key}, ${shot.visual_breakdown.lighting.quality}. Style: ${shot.visual_breakdown.lighting.lighting_style || 'standard'}
-      ENVIRONMENT MOOD: ${shot.visual_breakdown.scene.mood}, Palette: ${shot.visual_breakdown.scene.color_palette}
+      DIRECTORIAL NOTES:
+      ${(shot.visual_breakdown.notes || []).map((n: string) => `- ${n}`).join('\n')}
+
+      MANDATORY CINEMATIC SPECS:
+      - CAMERA ANGLE: EXTREME ${cameraAngle.toUpperCase()}
+      - SHOT SIZE: ${shotSize.toUpperCase()}
+      - COMPOSITION: ${shot.visual_breakdown.framing_composition.framing}, ${shot.visual_breakdown.framing_composition.perspective} perspective
+      - LENS: ${focalLength}mm (${lensDesc}), Aperture ${shot.visual_breakdown.camera.settings.aperture}
+      - DEPTH OF FIELD: ${shot.visual_breakdown.framing_composition.depth} focus
       
-      FINAL STYLE: Cinematic 8k film still, anamorphic lens, photorealistic, high-end production lighting. 
+      VISUAL CONTEXT:
+      - SCENE: "${shot.action_segment}"
+      - LIGHTING: ${shot.visual_breakdown.lighting.key}, ${shot.visual_breakdown.lighting.quality}. Style: ${shot.visual_breakdown.lighting.lighting_style || 'standard'}
+      - ENVIRONMENT MOOD: ${shot.visual_breakdown.scene.mood}, Palette: ${shot.visual_breakdown.scene.color_palette}
+      
+      FINAL STYLE: Cinematic 8k film still, anamorphic lens, photorealistic, high-end production lighting.
       IMPORTANT: Generate exactly one cinematic frame based on the technical breakdown and visual references provided. NO TEXT, LOGOS, OR CAPTIONS.
     `
         });
