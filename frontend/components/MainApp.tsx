@@ -680,7 +680,7 @@ const MainApp: React.FC = () => {
 
             // AUTO-START RENDERING: Skip manual confirmation
             setTimeout(() => {
-                handleStartRendering();
+                handleStartRendering(analysis.shots, allAssets);
             }, 500);
 
         } catch (error: any) {
@@ -688,12 +688,12 @@ const MainApp: React.FC = () => {
         }
     };
 
-    const handleStartRendering = async () => {
+    const handleStartRendering = async (passedShots?: any[], passedAssets?: any[]) => {
         if (!activeProject || !activeSequence) return;
         setState(prev => ({ ...prev, isGeneratingImages: true }));
 
-        const allAssets = [...activeProject.globalAssets, ...activeSequence.assets];
-        const shots = [...activeSequence.shots];
+        const allAssets = passedAssets || [...activeProject.globalAssets, ...activeSequence.assets];
+        const shots = passedShots || [...activeSequence.shots];
 
         for (let i = 0; i < shots.length; i++) {
             if (shots[i].image_url) continue; // Skip already rendered shots
