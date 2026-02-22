@@ -677,6 +677,12 @@ const MainApp: React.FC = () => {
                     } : s)
                 } : p)
             }));
+
+            // AUTO-START RENDERING: Skip manual confirmation
+            setTimeout(() => {
+                handleStartRendering();
+            }, 500);
+
         } catch (error: any) {
             setState(prev => ({ ...prev, isAnalyzing: false, error: error.message }));
         }
@@ -1377,8 +1383,8 @@ const MainApp: React.FC = () => {
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 pb-32 print:grid-cols-1 print:gap-12 print:pb-0">
-                            {/* Continuity Review Panel */}
-                            {activeSequence.continuityIssues && activeSequence.continuityIssues.filter(i => !i.resolved).length > 0 && (
+                            {/* Continuity Review Panel - HIDDEN by user request for automation */}
+                            {false && activeSequence.continuityIssues && activeSequence.continuityIssues.filter(i => !i.resolved).length > 0 && (
                                 <div className="col-span-full bg-amber-500/5 border border-amber-500/20 rounded-3xl p-6 flex flex-col space-y-4 animate-in slide-in-from-top-4 print:hidden">
                                     <div className="flex items-center justify-between">
                                         <div className="flex items-center space-x-3">
