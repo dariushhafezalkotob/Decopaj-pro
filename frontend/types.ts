@@ -1,3 +1,5 @@
+export type AngleID = "low_angle" | "worms_eye" | "top_down" | "dutch_tilt" | "eye_level" | "over_the_shoulder" | "profile" | "reflection" | "silhouette" | "one_point_perspective";
+export type ShotSizeID = "wide" | "long" | "medium" | "medium_close_up" | "close_up" | "extreme_close_up" | "full_body";
 
 export interface CharacterShotDetail {
     name: string;
@@ -30,6 +32,11 @@ export interface VisualBreakdown {
         shot_type: string;
         framing: string;
         perspective: string;
+        camera_angle?: AngleID;
+        shot_size?: ShotSizeID;
+        depth?: string;
+        focus?: string;
+        scale_emphasis?: string;
     };
     camera: {
         lens: { focal_length_mm: number; type: string };
@@ -39,7 +46,9 @@ export interface VisualBreakdown {
         key: string;
         quality: string;
         color_contrast: string;
+        lighting_style?: string;
     };
+    notes?: string[];
 }
 
 export interface ShotPlan {

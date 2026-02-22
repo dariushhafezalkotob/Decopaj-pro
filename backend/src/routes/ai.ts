@@ -307,22 +307,42 @@ export default async function aiRoutes(server: FastifyInstance) {
                 const assetMapText = safeAssets.map((a: any) => `- ${a.name} (${a.type}): USE REF TAG "${a.refTag}"`).join('\n');
 
                 const prompt = `Role: Professional Film Director & Cinematographer.
-      Task: Technical 'Decopaj' (shot breakdown) of the provided script.
+      Task: Technical 'Decopaj' (shot breakdown) of the provided script using the "Director Logic System".
       
       MANDATORY PRODUCTION ASSETS (Mapping table):
       ${assetMapText}
       
-      INSTRUCTIONS:
-      1. Break the scene into logical Shots/Plans.
-      2. For each shot, list the characters present in that frame.
-      3. CRITICAL: For every character, object/item, AND environment/location, you MUST populate the "reference_image" field with the exact "image X" ref tag from the mapping table above if a matching asset exists.
-      4. STATEFUL CONTINUITY: Characters must maintain their state (outfits, accessories like helmets, baggage) across shots unless an action explicitly changes it. 
-         - If a character puts on or is wearing an outfit (e.g., "suit") or accessory (e.g., "helmet") in Shot 1, you MUST include these as separate entries in the "objects" array for Shot 2, 3, etc., as long as they are still wearing/using them.
-         - Consistently include the "reference_image" ref tag for these persistent outfits in the "objects" array.
-      5. Provide detailed physical positioning and lighting effects specifically for those characters.
-      6. Technical camera specs should be professional (e.g., 35mm lens, f/2.8, shallow depth of field).
+      DIRECTOR LOGIC SYSTEM:
+      1. CANONICAL TAXONOMY:
+         - Angles: "low_angle", "worms_eye", "top_down", "dutch_tilt", "eye_level", "over_the_shoulder", "profile", "reflection", "silhouette", "one_point_perspective"
+         - Sizes: "wide", "long", "medium", "medium_close_up", "close_up", "extreme_close_up", "full_body"
       
-      Script to process: "${script}"`;
+      2. CINEMATIC GRAMMAR (Emotion → Recipe):
+         - POWER: Angle=low_angle, Size=[medium, full_body]
+         - AWE_SCALE: Angle=worms_eye, Size=[full_body, long]
+         - VULNERABLE: Angle=top_down, Size=[medium, wide]
+         - CHAOS_FEAR: Angle=dutch_tilt, Size=[medium, medium_close_up]
+         - INTIMACY: Angle=eye_level, Size=[close_up, medium_close_up]
+         - RESOLVE: Angle=eye_level, Size=[extreme_close_up] (focus on eyes)
+         - CONTROLLED: Angle=profile, Size=[close_up, medium_close_up]
+         - MYSTERY: Angle=silhouette, Size=[long, wide]
+         - IDENTITY: Angle=reflection, Size=[close_up, medium_close_up]
+         - LONELINESS: Angle=eye_level, Size=[wide, long] (subject small in frame)
+         - CONFRONT: Angle=over_the_shoulder, Size=[medium_close_up, medium]
+         - DESTINY: Angle=one_point_perspective, Size=[wide]
+      
+      3. SELECTION ALGORITHM:
+         - Pick recipe based on emotional subtext or scene type (Dialogue, Action, Reveal).
+         - Intensity (0-1): Higher intensity = tighter shot size (CU/ECU).
+         - Roles: "dominant" → lower angle; "vulnerable" → higher angle.
+      
+      INSTRUCTIONS:
+      1. Break the scene into logical Shots.
+      2. Use the "notes" field to explain your logic (e.g., "emotion=POWER", "intensity=0.8").
+      3. CRITICAL: Use the "image X" ref tags from mapping table for characters/locations/objects.
+      4. STATEFUL CONTINUITY: Persistent outfits/accessories must stay in the "objects" array unless removed.
+      
+      Script: "${script}"`;
 
                 const response = await ai.models.generateContent({
                     model: 'gemini-3-pro-preview',
@@ -388,7 +408,12 @@ export default async function aiRoutes(server: FastifyInstance) {
                                                         properties: {
                                                             shot_type: { type: Type.STRING },
                                                             framing: { type: Type.STRING },
-                                                            perspective: { type: Type.STRING }
+                                                            perspective: { type: Type.STRING },
+                                                            camera_angle: { type: Type.STRING },
+                                                            shot_size: { type: Type.STRING },
+                                                            depth: { type: Type.STRING },
+                                                            focus: { type: Type.STRING },
+                                                            scale_emphasis: { type: Type.STRING }
                                                         },
                                                         required: ["shot_type", "framing", "perspective"]
                                                     },
@@ -405,10 +430,12 @@ export default async function aiRoutes(server: FastifyInstance) {
                                                         properties: {
                                                             key: { type: Type.STRING },
                                                             quality: { type: Type.STRING },
-                                                            color_contrast: { type: Type.STRING }
+                                                            color_contrast: { type: Type.STRING },
+                                                            lighting_style: { type: Type.STRING }
                                                         },
                                                         required: ["key", "quality", "color_contrast"]
-                                                    }
+                                                    },
+                                                    notes: { type: Type.ARRAY, items: { type: Type.STRING } }
                                                 },
                                                 required: ["scene", "characters", "camera", "lighting", "framing_composition"]
                                             }
@@ -446,19 +473,26 @@ export default async function aiRoutes(server: FastifyInstance) {
                 const mappingText = assets.map((a: any) => `- ${a.name} (${a.type}): use "${a.refTag}"`).join('\n');
 
                 const prompt = `
-      You are a cinematic director. Analyze the following manual shot description and create a technical cinematic breakdown.
+      You are a professional cinematic director. Analyze the following manual shot description and create a technical cinematic breakdown using the "Director Logic System".
       
       USER DESCRIPTION: "${description}"
 
+      DIRECTOR LOGIC SYSTEM:
+      1. CANONICAL TAXONOMY:
+         - Angles: "low_angle", "worms_eye", "top_down", "dutch_tilt", "eye_level", "over_the_shoulder", "profile", "reflection", "silhouette", "one_point_perspective"
+         - Sizes: "wide", "long", "medium", "medium_close_up", "close_up", "extreme_close_up", "full_body"
+      
+      2. CINEMATIC GRAMMAR:
+         - POWER: low_angle. AWE/SCALE: worms_eye. VULNERABLE: top_down. CHAOS: dutch_tilt. INTIMACY: eye_level (CU/MCU). RESOLVE: eye_level (ECU). IDENTITY: reflection.
+      
       ASSET MAPPING TABLE (CRITICAL):
       ${mappingText}
 
       INSTRUCTIONS:
       1. Create a detailed Visual Breakdown for this single shot.
-      2. CRITICAL: Use the "image X" ref tags from the mapping table above for the "reference_image" fields of characters, objects, and environment locations.
-      3. If the user mentions a character, object, or location from the mapping table, you MUST use its refTag.
-      4. If the user describes a location that matches one in the mapping table, use that location's details.
-      5. CONTINUITY: If this shot description implies a character is wearing a specific outfit (e.g., "tactical suit") or carrying an object (e.g., "helmet"), ensure these are explicitly listed in the "objects" array with their mapping refTags.
+      2. Use the "notes" field to justify your choice (e.g., "emotion=CHAOS", "intensity=0.9").
+      3. CRITICAL: Use the "image X" ref tags from the mapping table for characters, objects, and environment locations.
+      4. CONTINUITY: Persistent outfits/accessories must stay in the "objects" array.
 
       Return a single ShotPlan object.
     `;
@@ -511,8 +545,7 @@ export default async function aiRoutes(server: FastifyInstance) {
                                                     name: { type: Type.STRING },
                                                     reference_image: { type: Type.STRING },
                                                     details: { type: Type.STRING },
-
-                                                    n: { type: Type.STRING }
+                                                    action: { type: Type.STRING }
                                                 },
                                                 required: ["name", "details"]
                                             }
@@ -522,7 +555,12 @@ export default async function aiRoutes(server: FastifyInstance) {
                                             properties: {
                                                 shot_type: { type: Type.STRING },
                                                 framing: { type: Type.STRING },
-                                                perspective: { type: Type.STRING }
+                                                perspective: { type: Type.STRING },
+                                                camera_angle: { type: Type.STRING },
+                                                shot_size: { type: Type.STRING },
+                                                depth: { type: Type.STRING },
+                                                focus: { type: Type.STRING },
+                                                scale_emphasis: { type: Type.STRING }
                                             },
                                             required: ["shot_type", "framing", "perspective"]
                                         },
@@ -539,10 +577,12 @@ export default async function aiRoutes(server: FastifyInstance) {
                                             properties: {
                                                 key: { type: Type.STRING },
                                                 quality: { type: Type.STRING },
-                                                color_contrast: { type: Type.STRING }
+                                                color_contrast: { type: Type.STRING },
+                                                lighting_style: { type: Type.STRING }
                                             },
                                             required: ["key", "quality", "color_contrast"]
-                                        }
+                                        },
+                                        notes: { type: Type.ARRAY, items: { type: Type.STRING } }
                                     },
                                     required: ["scene", "characters", "camera", "lighting", "framing_composition"]
                                 }
@@ -624,7 +664,14 @@ export default async function aiRoutes(server: FastifyInstance) {
             text: `
       SCENE CONTEXT: "${shot.action_segment}"
       SHOT TYPE: ${shot.visual_breakdown.framing_composition.shot_type}, ${shot.visual_breakdown.framing_composition.framing}
+      CINEMATIC SPECS:
+        Angle: ${shot.visual_breakdown.framing_composition.camera_angle || 'standard'}
+        Size: ${shot.visual_breakdown.framing_composition.shot_size || 'standard'}
+        Depth: ${shot.visual_breakdown.framing_composition.depth || 'standard'}
+        Focus: ${shot.visual_breakdown.framing_composition.focus || 'standard'}
+        Emphasis: ${shot.visual_breakdown.framing_composition.scale_emphasis || 'none'}
       CAMERA DATA: Lens ${shot.visual_breakdown.camera.lens.focal_length_mm}mm, Aperture ${shot.visual_breakdown.camera.settings.aperture}
+      LIGHTING: ${shot.visual_breakdown.lighting.key}, ${shot.visual_breakdown.lighting.quality}. Style: ${shot.visual_breakdown.lighting.lighting_style || 'standard'}
       ENVIRONMENT MOOD: ${shot.visual_breakdown.scene.mood}, Palette: ${shot.visual_breakdown.scene.color_palette}
       
       FINAL STYLE: Cinematic 8k film still, anamorphic lens, photorealistic, high-end production lighting. 
