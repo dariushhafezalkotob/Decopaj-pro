@@ -317,8 +317,8 @@ export default async function aiRoutes(server: FastifyInstance) {
       2. For each shot, list the characters present in that frame.
       3. CRITICAL: For every character, object/item, AND environment/location, you MUST populate the "reference_image" field with the exact "image X" ref tag from the mapping table above if a matching asset exists.
       4. STATEFUL CONTINUITY: Characters must maintain their state (outfits, accessories like helmets, baggage) across shots unless an action explicitly changes it. 
-         - If a character puts on a helmet in Shot 1, they MUST be wearing it in Shot 2, 3, etc., until the script says "takes off helmet".
-         - Consistently describe their appearance to match previous frames unless logically changed.
+         - If a character puts on or is wearing an outfit (e.g., "suit") or accessory (e.g., "helmet") in Shot 1, you MUST include these as separate entries in the "objects" array for Shot 2, 3, etc., as long as they are still wearing/using them.
+         - Consistently include the "reference_image" ref tag for these persistent outfits in the "objects" array.
       5. Provide detailed physical positioning and lighting effects specifically for those characters.
       6. Technical camera specs should be professional (e.g., 35mm lens, f/2.8, shallow depth of field).
       
@@ -458,6 +458,7 @@ export default async function aiRoutes(server: FastifyInstance) {
       2. CRITICAL: Use the "image X" ref tags from the mapping table above for the "reference_image" fields of characters, objects, and environment locations.
       3. If the user mentions a character, object, or location from the mapping table, you MUST use its refTag.
       4. If the user describes a location that matches one in the mapping table, use that location's details.
+      5. CONTINUITY: If this shot description implies a character is wearing a specific outfit (e.g., "tactical suit") or carrying an object (e.g., "helmet"), ensure these are explicitly listed in the "objects" array with their mapping refTags.
 
       Return a single ShotPlan object.
     `;
