@@ -28,7 +28,7 @@ export default async function aiRoutes(server: FastifyInstance) {
         console.log(`Resolving image: ${input.substring(0, 50)}${input.length > 50 ? '...' : ''}`);
 
         // Handle database-stored media URLs (e.g., /api/media/...)
-        const mediaMatch = input.match(/\/api\/media\/(.+)$/);
+        const mediaMatch = input.match(/\/api\/media\/([^?#\s]+)/);
         if (mediaMatch) {
             const mediaId = mediaMatch[1];
             console.log(`Fetching from database: ${mediaId}`);
@@ -45,7 +45,7 @@ export default async function aiRoutes(server: FastifyInstance) {
         }
 
         // Handle local file path (e.g., /public/shots/...)
-        const publicMatch = input.match(/\/public\/(.+)$/);
+        const publicMatch = input.match(/\/public\/([^?#\s]+)/);
         if (publicMatch) {
             const relPath = `public/${publicMatch[1].split('?')[0]}`; // Strip query params
             const filePath = path.join(process.cwd(), relPath);
@@ -62,6 +62,24 @@ export default async function aiRoutes(server: FastifyInstance) {
             return null;
         }
 
+        // Handle External URL
+        if (input.startsWith('http')) {
+            try {
+                console.log(`Fetching external image: ${input}`);
+                const response = await (globalThis as any).fetch(input);
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                const buffer = await response.arrayBuffer();
+                const contentType = response.headers.get('content-type') || mimeType;
+                return {
+                    data: Buffer.from(buffer).toString('base64'),
+                    mimeType: contentType
+                };
+            } catch (err: any) {
+                console.warn(`Failed to fetch external image (${input}):`, err.message);
+                return null;
+            }
+        }
+
         // Handle Data URL
         if (input.includes('base64,')) {
             console.log(`Detected Data URL`);
@@ -69,12 +87,6 @@ export default async function aiRoutes(server: FastifyInstance) {
                 data: input.split('base64,')[1],
                 mimeType: input.split(';')[0].split(':')[1] || mimeType
             };
-        }
-
-        // If it starts with http or /, and we reached here, it's a broken link we can't resolve
-        if (input.startsWith('http') || input.startsWith('/')) {
-            console.warn(`Unresolvable image link: ${input}`);
-            return null;
         }
 
         // Assume raw base64
@@ -805,16 +817,17 @@ export default async function aiRoutes(server: FastifyInstance) {
 
         const imageRes = await resolveImageResource(originalBase64);
 
-        // Handling HTTP URLs for Seedream (bypass formatting if it's a URL)
-        let base64Data: string;
-        let currentMimeType: string = 'image/png';
+        let base64Data = '';
+        let currentMimeType = 'image/png';
 
         if (!imageRes) {
+            // Last ditch fallback for Seedream if resolution failed but it's a URL
             if (requestedModel === 'seedream-4.5' && typeof originalBase64 === 'string' && originalBase64.startsWith('http')) {
-                console.log("Input is a URL, passing directly to Seedream.");
+                console.log("Resolution failed but passing URL directly to Seedream.");
                 base64Data = originalBase64;
             } else {
-                throw new Error("No original image data provided.");
+                console.error(`EDIT SHOT FAILED: Could not resolve original image. Input: ${typeof originalBase64 === 'string' ? originalBase64.substring(0, 50) : 'non-string'}`);
+                throw new Error(`Original image source could not be resolved. Source: ${typeof originalBase64 === 'string' ? 'Link/Path' : 'Object'}`);
             }
         } else {
             base64Data = imageRes.data;
