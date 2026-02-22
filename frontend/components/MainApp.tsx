@@ -1383,59 +1383,7 @@ const MainApp: React.FC = () => {
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 pb-32 print:grid-cols-1 print:gap-12 print:pb-0">
-                            {/* Continuity Review Panel - HIDDEN by user request for automation */}
-                            {false && activeSequence.continuityIssues && activeSequence.continuityIssues.filter(i => !i.resolved).length > 0 && (
-                                <div className="col-span-full bg-amber-500/5 border border-amber-500/20 rounded-3xl p-6 flex flex-col space-y-4 animate-in slide-in-from-top-4 print:hidden">
-                                    <div className="flex items-center justify-between">
-                                        <div className="flex items-center space-x-3">
-                                            <div className="w-10 h-10 bg-amber-500/20 rounded-xl flex items-center justify-center text-amber-500">
-                                                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
-                                            </div>
-                                            <div>
-                                                <h3 className="text-lg font-bold text-amber-500">Continuity Review Required</h3>
-                                                <p className="text-zinc-500 text-xs uppercase font-black tracking-widest">Found {activeSequence.continuityIssues.filter(i => !i.resolved).length} potential inconsistencies in the technical breakdown.</p>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                                        {activeSequence.continuityIssues.filter(i => !i.resolved).map(issue => (
-                                            <div key={issue.id} className="bg-zinc-950/50 border border-zinc-800 p-4 rounded-2xl space-y-2 group/issue hover:border-amber-500/30 transition-all flex flex-col">
-                                                <div className="flex justify-between items-start">
-                                                    <span className={`text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded ${issue.severity === 'error' ? 'bg-red-500 text-white' : issue.severity === 'warning' ? 'bg-amber-500 text-black' : 'bg-zinc-800 text-zinc-400'}`}>
-                                                        {issue.category}
-                                                    </span>
-                                                    <span className="text-zinc-700 text-[8px] font-black uppercase tracking-widest">Shot {issue.shotId}</span>
-                                                </div>
-                                                <p className="text-[11px] font-bold leading-tight">{issue.message}</p>
-                                                <p className="text-[9px] text-zinc-500 italic line-clamp-2">{issue.evidence}</p>
-                                                <div className="flex-1"></div>
-                                                {issue.suggestedFix && (
-                                                    <div className="pt-2 border-t border-zinc-800/50 space-y-2">
-                                                        <p className="text-[8px] font-black uppercase tracking-widest text-emerald-500 mb-1">Suggested Fix:</p>
-                                                        <p className="text-[10px] text-zinc-400">{issue.suggestedFix}</p>
-                                                        <div className="flex space-x-2 pt-1">
-                                                            {issue.fixData && (
-                                                                <button
-                                                                    onClick={() => handleApplyContinuityFix(issue.shotId!, issue.id)}
-                                                                    className="flex-1 bg-emerald-500/20 text-emerald-500 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest hover:bg-emerald-500 hover:text-zinc-950 transition-all"
-                                                                >
-                                                                    Apply Fix
-                                                                </button>
-                                                            )}
-                                                            <button
-                                                                onClick={() => handleResolveIssue(issue.id)}
-                                                                className="px-3 bg-zinc-800 text-zinc-400 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest hover:bg-zinc-700 transition-all"
-                                                            >
-                                                                Ignore
-                                                            </button>
-                                                        </div>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
+                            {/* Continuity Review Panel - Removed for automation */}
 
                             {/* Insert Prompt at index 0 */}
                             {state.insertionIndex === 0 && (
