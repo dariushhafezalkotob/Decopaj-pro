@@ -710,52 +710,86 @@ export default async function aiRoutes(server: FastifyInstance) {
         // High resolution model selection
         const model = 'gemini-3-pro-image-preview';
 
-        // Add Previous Shot Context if available
+        const imageParts: { priority: number, part: any }[] = [];
+
+        // 1. Add Previous Shot Context (Highest Priority)
         if (previousShotUrl) {
             const prevRes = await resolveImageResource(previousShotUrl);
             if (prevRes) {
-                parts.push({ inlineData: { data: prevRes.data, mimeType: prevRes.mimeType } });
-                parts.push({ text: `PREVIOUS SHOT REFERENCE: This is the exact frame that immediately precedes the current shot. Maintain visual continuity (characters, outfits, props, lighting) based on this image unless the script explicitly states a change.` });
-            }
-        }
-
-        const envRefTag = shot.visual_breakdown.scene.environment.reference_image;
-        const locationAsset = assets.find((a: any) => a.refTag === envRefTag) || assets.find((a: any) => a.type === 'location' && shot.relevant_entities.includes(a.name));
-        const locRes = await resolveImageResource(locationAsset?.imageData);
-        if (locRes) {
-            parts.push({ inlineData: { data: locRes.data, mimeType: locRes.mimeType } });
-            parts.push({ text: `ENVIRONMENT REFERENCE [${locationAsset.refTag}]: ${locationAsset.name}. ${locationAsset.description}` });
-        }
-
-        for (const charShot of shot.visual_breakdown.characters) {
-            const asset = assets.find((a: any) => a.refTag === charShot.reference_image) || assets.find((a: any) => a.name === charShot.name);
-            const charRes = await resolveImageResource(asset?.imageData);
-            if (charRes) {
-                parts.push({ inlineData: { data: charRes.data, mimeType: charRes.mimeType } });
-                parts.push({
-                    text: `CHARACTER IDENTITY [${charShot.reference_image}]: "${charShot.name}".
-        MANDATORY FACIAL FEATURES: Use the attached reference image for this character.
-        FRAME POSITION: ${charShot.position}
-        EXPRESSION: ${charShot.appearance.expression}
-        APPEARANCE: ${charShot.appearance.description}
-        ACTION: ${charShot.actions}
-        LIGHTING ON THEM: ${charShot.lighting_effect}`
+                imageParts.push({
+                    priority: 100,
+                    part: [
+                        { inlineData: { data: prevRes.data, mimeType: prevRes.mimeType } },
+                        { text: `PREVIOUS SHOT REFERENCE: This is the exact frame that immediately precedes the current shot. Maintain visual continuity (characters, outfits, props, lighting) based on this image strictly.` }
+                    ]
                 });
             }
         }
 
-        // Add Object references
+        // 2. Add Environment Reference
+        const envRefTag = shot.visual_breakdown.scene.environment.reference_image;
+        const locationAsset = assets.find((a: any) => a.refTag === envRefTag) || assets.find((a: any) => a.type === 'location' && shot.relevant_entities.includes(a.name));
+        const locRes = await resolveImageResource(locationAsset?.imageData);
+        if (locRes) {
+            imageParts.push({
+                priority: 80,
+                part: [
+                    { inlineData: { data: locRes.data, mimeType: locRes.mimeType } },
+                    { text: `ENVIRONMENT REFERENCE [${locationAsset.refTag}]: ${locationAsset.name}. ${locationAsset.description}` }
+                ]
+            });
+        }
+
+        // 3. Add Character references
+        for (const charShot of shot.visual_breakdown.characters) {
+            const asset = assets.find((a: any) => a.refTag === charShot.reference_image) || assets.find((a: any) => a.name === charShot.name);
+            const charRes = await resolveImageResource(asset?.imageData);
+            if (charRes) {
+                imageParts.push({
+                    priority: 95,
+                    part: [
+                        { inlineData: { data: charRes.data, mimeType: charRes.mimeType } },
+                        {
+                            text: `CHARACTER IDENTITY [${charShot.reference_image}]: "${charShot.name}".
+        MANDATORY FACIAL FEATURES: Use this reference image.
+        FRAME POSITION: ${charShot.position}
+        EXPRESSION: ${charShot.appearance.expression}
+        APPEARANCE: ${charShot.appearance.description}`
+                        }
+                    ]
+                });
+            }
+        }
+
+        // 4. Add Object references (Prioritizing Worn items like Suit/Helmet)
         if (shot.visual_breakdown.objects) {
             for (const obj of shot.visual_breakdown.objects) {
                 if (obj.reference_image) {
                     const asset = assets.find((a: any) => a.refTag === obj.reference_image) || assets.find((a: any) => a.name === obj.name);
                     const objRes = await resolveImageResource(asset?.imageData);
                     if (objRes) {
-                        parts.push({ inlineData: { data: objRes.data, mimeType: objRes.mimeType } });
-                        parts.push({ text: `OBJECT/ITEM REFERENCE [${obj.reference_image}]: "${obj.name}". Details: ${obj.details}` });
+                        const isWorn = ["suit", "helmet", "gloves", "outfit", "armor", "clothing"].some(k => obj.name.toLowerCase().includes(k));
+                        imageParts.push({
+                            priority: isWorn ? 90 : 60,
+                            part: [
+                                { inlineData: { data: objRes.data, mimeType: objRes.mimeType } },
+                                { text: `OBJECT REFERENCE [${obj.reference_image}]: "${obj.name}". Details: ${obj.details}` }
+                            ]
+                        });
                     }
                 }
             }
+        }
+
+        // --- REFERENCE LIMITER & MERGER ---
+        // Gemini-3 performs best with < 6 images. We prioritize based on importance.
+        const MAX_IMAGES = 6;
+        imageParts.sort((a, b) => b.priority - a.priority);
+        const finalImageParts = imageParts.slice(0, MAX_IMAGES);
+
+        // Build final parts array
+        for (const set of finalImageParts) {
+            parts.push(...set.part);
         }
 
         const cameraAngle = (shot.visual_breakdown.framing_composition.camera_angle || 'standard').replace(/_/g, ' ');
