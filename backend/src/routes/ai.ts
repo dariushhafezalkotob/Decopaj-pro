@@ -782,8 +782,8 @@ export default async function aiRoutes(server: FastifyInstance) {
         }
 
         // --- REFERENCE LIMITER & MERGER ---
-        // Gemini-3 performs best with < 6 images. We prioritize based on importance.
-        const MAX_IMAGES = 6;
+        // Gemini-3 performs best with high-priority images. We allow up to 8 based on user preference.
+        const MAX_IMAGES = 8;
         imageParts.sort((a, b) => b.priority - a.priority);
         const finalImageParts = imageParts.slice(0, MAX_IMAGES);
 
