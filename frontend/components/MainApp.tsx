@@ -110,7 +110,8 @@ const InsertPromptCard: React.FC<{
     onConfirm: () => void;
     onCancel: () => void;
     isAnalyzing: boolean;
-}> = ({ value, onChange, onConfirm, onCancel, isAnalyzing }) => {
+    progress?: string | null;
+}> = ({ value, onChange, onConfirm, onCancel, isAnalyzing, progress }) => {
     return (
         <div className="aspect-square bg-zinc-900 border border-zinc-800 rounded-3xl p-6 flex flex-col items-center justify-center relative group/insert">
             <h3 className="text-[10px] font-black uppercase tracking-widest text-amber-500 mb-4 self-start">Describe New Plan</h3>
@@ -139,9 +140,10 @@ const InsertPromptCard: React.FC<{
             </div>
 
             {isAnalyzing && (
-                <div className="absolute inset-0 bg-zinc-950/80 rounded-3xl z-10 flex flex-col items-center justify-center backdrop-blur-sm animate-in fade-in">
+                <div className="absolute inset-0 bg-zinc-950/80 rounded-3xl z-10 flex flex-col items-center justify-center backdrop-blur-sm animate-in fade-in text-center p-6">
                     <div className="w-10 h-10 border-4 border-amber-500/20 border-t-amber-500 rounded-full animate-spin mb-4" />
-                    <span className="text-[10px] font-black uppercase tracking-widest animate-pulse">Analyzing...</span>
+                    <span className="text-[10px] font-black uppercase tracking-widest text-white mb-2">{progress || 'Analyzing Segment'}</span>
+                    <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest leading-tight">Please wait while the AI plans your shot...</span>
                 </div>
             )}
         </div>
@@ -165,6 +167,7 @@ const MainApp: React.FC = () => {
         showGlobalPicker: boolean;
         pickerTargetId: string | null;
         editingSequenceId: string | null;
+        analysisProgress: string | null;
     }>({
         projects: [],
         activeProjectId: null,
@@ -191,7 +194,8 @@ const MainApp: React.FC = () => {
         pickerTargetId: null,
         pickerSearch: '',
         pickerCategory: 'all' as 'all' | 'character' | 'location' | 'item',
-        editingSequenceId: null
+        editingSequenceId: null,
+        analysisProgress: null
     });
 
     // Initial Load from Backend
@@ -652,13 +656,15 @@ const MainApp: React.FC = () => {
 
     const handleGenerateStoryboard = async () => {
         if (!activeProject || !activeSequence) return;
-        setState(prev => ({ ...prev, isAnalyzing: true, error: null }));
+        setState(prev => ({ ...prev, isAnalyzing: true, error: null, analysisProgress: 'Initializing analysis...' }));
 
         const allAssets = [...activeProject.globalAssets, ...activeSequence.assets];
 
         try {
-            // STEP 1: Full Technical Analysis
-            const analysis = await performFullDecopaj(activeSequence.script, allAssets);
+            // STEP 1: Full Cinematic Decopaj (Multi-stage)
+            const analysis = await performFullDecopaj(activeSequence.script, allAssets, (progress) => {
+                setState(prev => ({ ...prev, analysisProgress: progress }));
+            });
 
             // STEP 2: Automatic Continuity Check
             const continuityRes = await checkContinuityProxy(analysis.shots, allAssets);
@@ -1354,7 +1360,12 @@ const MainApp: React.FC = () => {
                                 className={`flex-1 px-10 py-4 rounded-2xl font-black uppercase tracking-widest text-sm flex items-center justify-center space-x-4 transition-all ${state.isAnalyzing ? 'bg-zinc-800 text-zinc-600' : 'bg-amber-500 text-zinc-950 hover:bg-amber-400 shadow-xl shadow-amber-500/20'}`}
                             >
                                 {state.isAnalyzing && <div className="w-5 h-5 border-2 border-zinc-950/30 border-t-zinc-950 rounded-full animate-spin"></div>}
-                                <span>{state.isAnalyzing ? 'Decopaj in progress...' : 'Finalize Shot Board'}</span>
+                                <div className="flex flex-col items-center">
+                                    <span>{state.isAnalyzing ? 'Decopaj in progress...' : 'Finalize Shot Board'}</span>
+                                    {state.isAnalyzing && state.analysisProgress && (
+                                        <span className="text-[8px] opacity-60 font-bold mt-1 lowercase">{state.analysisProgress}</span>
+                                    )}
+                                </div>
                             </button>
                         </div>
                     </div>
@@ -1413,6 +1424,7 @@ const MainApp: React.FC = () => {
                                     onConfirm={submitInsertion}
                                     onCancel={() => setState(p => ({ ...p, insertionIndex: null }))}
                                     isAnalyzing={state.isAnalyzing}
+                                    progress={state.analysisProgress}
                                 />
                             )}
 
@@ -1448,6 +1460,7 @@ const MainApp: React.FC = () => {
                                             onConfirm={submitInsertion}
                                             onCancel={() => setState(p => ({ ...p, insertionIndex: null }))}
                                             isAnalyzing={state.isAnalyzing}
+                                            progress={state.analysisProgress}
                                         />
                                     )}
                                 </React.Fragment>

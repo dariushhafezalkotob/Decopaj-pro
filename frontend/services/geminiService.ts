@@ -8,8 +8,8 @@ export const identifyEntities = async (script: string, globalCast: Entity[]): Pr
 };
 
 // STAGE 2: Perform full cinematic breakdown using casted assets
-export const performFullDecopaj = async (script: string, assets: Entity[]): Promise<AnalysisResponse> => {
-    return await analyzeScriptProxy(script, assets);
+export const performFullDecopaj = async (script: string, assets: Entity[], onProgress?: (progress: string) => void): Promise<AnalysisResponse> => {
+    return await analyzeScriptProxy(script, assets, onProgress);
 };
 
 export const analyzeCustomShot = async (description: string, assets: Entity[]): Promise<ShotPlan> => {

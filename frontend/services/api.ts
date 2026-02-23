@@ -109,7 +109,7 @@ export const identifyEntitiesProxy = async (script: string, globalCast: any[]) =
     return await res.json();
 };
 
-export const analyzeScriptProxy = async (script: string, assets: any[]) => {
+export const analyzeScriptProxy = async (script: string, assets: any[], onProgress?: (progress: string) => void) => {
     const res = await fetch(`${API_URL}/ai/analyze-script`, {
         method: 'POST',
         headers: getHeaders(),
@@ -117,7 +117,7 @@ export const analyzeScriptProxy = async (script: string, assets: any[]) => {
     });
     if (!res.ok) throw new Error("AI Service Failed");
     const { jobId } = await res.json();
-    return await pollJobStatus(jobId);
+    return await pollJobStatus(jobId, onProgress);
 };
 
 export const analyzeCustomShotProxy = async (description: string, assets: any[]) => {
@@ -132,7 +132,7 @@ export const analyzeCustomShotProxy = async (description: string, assets: any[])
 };
 
 // Polling helper for async jobs
-const pollJobStatus = async (jobId: string): Promise<any> => {
+export const pollJobStatus = async (jobId: string, onProgress?: (progress: string) => void): Promise<any> => {
     const maxAttempts = 100; // 100 * 3s = 300s (5 minutes)
     let attempts = 0;
 
@@ -154,7 +154,11 @@ const pollJobStatus = async (jobId: string): Promise<any> => {
             throw new Error(job.error || "Async generation failed.");
         }
 
-        console.log(`Job ${jobId} status: ${job.status}. Attempt ${attempts}...`);
+        if (job.progress && onProgress) {
+            onProgress(job.progress);
+        }
+
+        console.log(`Job ${jobId} status: ${job.status} (${job.progress || 'no progress'}). Attempt ${attempts}...`);
         // Wait 3 seconds before next poll
         await new Promise(r => setTimeout(r, 3000));
     }
