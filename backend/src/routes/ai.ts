@@ -440,7 +440,9 @@ export default async function aiRoutes(server: FastifyInstance) {
       1. Characters MUST maintain the same appearance, outfits, and items from the PREVIOUS SHOT unless this segment explicitly describes a change.
       2. If a character had a helmet/hat/item in the previous shot, they MUST still have it here by default.
       3. Use the "notes" field to track state (e.g., "Maintains helmet from shot 1").
-      4. Use provided ref tags (e.g., image 1) from asset map.`;
+      4. Use provided ref tags (e.g., image 1) from asset map.
+      5. MIRRORING RULE: Any clothing, armor, or accessory with a reference image (e.g., image 9) that a character is wearing MUST also be listed in the 'objects' array for this shot. This ensures the visual reference is applied correctly by the image generator.
+`;
 
                     const shotResponse = await ai.models.generateContent({
                         model: 'gemini-3-pro-preview',
