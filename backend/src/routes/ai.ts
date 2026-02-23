@@ -867,7 +867,7 @@ export default async function aiRoutes(server: FastifyInstance) {
                                 ],
                                 seed: -1
                             };
-                            const comicPrompt = "make it comic_klein_style, Comic_lines. \nkeep this image darkness and brightness, Keep this image lighting.";
+                            const comicPrompt = "make it comic_klein_style, Comic_lines. keep this image darkness and brightness. Keep this image lighting.";
                             imageUrl = await generateImageSeedream(comicPrompt, fluxConfig, fluxModelPath);
 
                         } else {
