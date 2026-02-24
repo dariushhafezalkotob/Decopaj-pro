@@ -1,5 +1,6 @@
 export interface CharacterShotDetail {
     name: string;
+    blocking_id?: string;
     appearance: {
         description: string;
         expression: string;

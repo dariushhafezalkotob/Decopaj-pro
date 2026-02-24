@@ -683,6 +683,10 @@ const MainApp: React.FC = () => {
                         updatedVB.characters = updatedVB.characters.map(c =>
                             c.name === charName ? { ...c, appearance: { ...c.appearance, description: value } } : c
                         );
+                    } else if (field === 'characters.blocking_id' && charName) {
+                        updatedVB.characters = updatedVB.characters.map(c =>
+                            c.name === charName ? { ...c, blocking_id: value } : c
+                        );
                     } else if (field === 'characters.position' && charName) {
                         updatedVB.characters = updatedVB.characters.map(c =>
                             c.name === charName ? { ...c, position: value } : c
@@ -855,6 +859,10 @@ const MainApp: React.FC = () => {
                         } else if (field === 'characters.appearance.description' && charName) {
                             updatedVB.characters = updatedVB.characters.map(c =>
                                 c.name === charName ? { ...c, appearance: { ...c.appearance, description: value } } : c
+                            );
+                        } else if (field === 'characters.blocking_id' && charName) {
+                            updatedVB.characters = updatedVB.characters.map(c =>
+                                c.name === charName ? { ...c, blocking_id: value } : c
                             );
                         } else if (field === 'characters.position' && charName) {
                             updatedVB.characters = updatedVB.characters.map(c =>

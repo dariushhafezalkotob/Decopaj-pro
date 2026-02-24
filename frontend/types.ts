@@ -4,6 +4,7 @@ export type ShotSizeID = "wide" | "long" | "medium" | "medium_close_up" | "close
 export interface CharacterShotDetail {
     name: string;
     reference_image: string;
+    blocking_id?: string;
     position: string;
     appearance: {
         description: string;
@@ -135,7 +136,7 @@ export interface ContinuityIssue {
         type: 'update-field';
         field: string;
         value: any;
-        charName?: string; // For outfit fixes
+        charName?: string; // For character-level fixes
     };
     resolved: boolean;
 }

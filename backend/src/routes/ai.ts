@@ -462,6 +462,7 @@ export default async function aiRoutes(server: FastifyInstance) {
 
       7. MASTER BLOCKING CONTINUITY (STRICT):
          - Use this Master Layout: ${sceneContext.master_blocking}
+         - Assign each character a stable blocking_id (examples: "driver", "front_passenger", "rear_center", "booth_left", "booth_right", "aisle_chair"). Reuse the same blocking_id for that character in every shot.
          - Characters MUST stay in these assigned positions unless the script says they move.
          - POSITION TEXT MUST BE STABLE: keep the same seat/location label wording for each character across shots (e.g., "driver seat", "front passenger", "rear left") unless movement is explicit.
          - EYELINE: Calculate the character's gaze based on the layout. (Example: If A is the driver and talks to B in the passenger seat, A should look toward the passenger side).
@@ -499,12 +500,13 @@ export default async function aiRoutes(server: FastifyInstance) {
                                                     properties: {
                                                         name: { type: Type.STRING },
                                                         reference_image: { type: Type.STRING },
+                                                        blocking_id: { type: Type.STRING },
                                                         position: { type: Type.STRING },
                                                         appearance: { type: Type.OBJECT, properties: { description: { type: Type.STRING }, expression: { type: Type.STRING } }, required: ["description", "expression"] },
                                                         actions: { type: Type.STRING },
                                                         lighting_effect: { type: Type.STRING }
                                                     },
-                                                    required: ["name", "reference_image", "position", "appearance", "actions", "lighting_effect"]
+                                                    required: ["name", "reference_image", "blocking_id", "position", "appearance", "actions", "lighting_effect"]
                                                 }
                                             },
                                             objects: {
@@ -563,6 +565,27 @@ export default async function aiRoutes(server: FastifyInstance) {
                     });
 
                     const shotJSON = JSON.parse(shotResponse.text || '{}');
+                    // Ensure blocking_id continuity even if model occasionally omits it.
+                    const prevBlockingByName = new Map<string, string>(
+                        (previousShotJSON?.visual_breakdown?.characters || [])
+                            .filter((c: any) => c?.name && c?.blocking_id)
+                            .map((c: any) => [c.name, c.blocking_id])
+                    );
+                    const toBlockingId = (input: string) =>
+                        input
+                            .toLowerCase()
+                            .replace(/[^a-z0-9]+/g, '_')
+                            .replace(/^_+|_+$/g, '')
+                            .slice(0, 40);
+                    if (shotJSON?.visual_breakdown?.characters?.length) {
+                        shotJSON.visual_breakdown.characters = shotJSON.visual_breakdown.characters.map((c: any) => {
+                            if (c.blocking_id && String(c.blocking_id).trim()) return c;
+                            const inherited = prevBlockingByName.get(c.name);
+                            if (inherited) return { ...c, blocking_id: inherited };
+                            const fromPosition = c.position ? toBlockingId(String(c.position)) : '';
+                            return { ...c, blocking_id: fromPosition || toBlockingId(String(c.name || 'character')) };
+                        });
+                    }
                     // Add the original action segment for reference
                     shotJSON.action_segment = plan.action_segment;
 
@@ -650,6 +673,7 @@ export default async function aiRoutes(server: FastifyInstance) {
                                                 properties: {
                                                     name: { type: Type.STRING },
                                                     reference_image: { type: Type.STRING },
+                                                    blocking_id: { type: Type.STRING },
                                                     position: { type: Type.STRING },
                                                     appearance: { type: Type.OBJECT, properties: { description: { type: Type.STRING }, expression: { type: Type.STRING } }, required: ["description", "expression"] },
                                                     actions: { type: Type.STRING },
@@ -774,6 +798,7 @@ export default async function aiRoutes(server: FastifyInstance) {
                         { inlineData: { data: charRes.data, mimeType: charRes.mimeType } },
                         {
                             text: `CHARACTER IDENTITY [${charShot.reference_image}]: "${charShot.name}".
+        BLOCKING ID (STRICT): ${charShot.blocking_id || 'unknown'}
         MANDATORY FACIAL FEATURES: Use this reference image.
         FRAME POSITION: ${charShot.position}
         EXPRESSION: ${charShot.appearance.expression}
@@ -822,8 +847,25 @@ export default async function aiRoutes(server: FastifyInstance) {
             : focalLength >= 85 ? "Telephoto lens with compressed depth"
                 : "Standard cinematic prime lens";
         const blockingMap = shot.visual_breakdown.characters
-            .map((c: any) => `${c.name}: ${c.position}`)
+            .map((c: any) => `${c.name} [${c.blocking_id || 'missing_id'}]: ${c.position}`)
             .join('\n      - ');
+        const structuredShotJSON = JSON.stringify({
+            scene: shot.visual_breakdown.scene,
+            characters: shot.visual_breakdown.characters.map((c: any) => ({
+                name: c.name,
+                reference_image: c.reference_image,
+                blocking_id: c.blocking_id,
+                position: c.position,
+                appearance: c.appearance,
+                actions: c.actions,
+                lighting_effect: c.lighting_effect
+            })),
+            camera: shot.visual_breakdown.camera,
+            lighting: shot.visual_breakdown.lighting,
+            framing_composition: shot.visual_breakdown.framing_composition,
+            notes: shot.visual_breakdown.notes || [],
+            objects: shot.visual_breakdown.objects || []
+        }, null, 2);
 
         parts.push({
             text: `
@@ -834,8 +876,16 @@ export default async function aiRoutes(server: FastifyInstance) {
       - ${blockingMap}
       - These blocking assignments are fixed continuity anchors across all shots.
       - DO NOT swap characters, mirror left/right orientation, or relocate anyone unless the script explicitly says they moved.
-      - In close-ups, keep off-screen characters in their original seats logically (only framing changes, not blocking).
+      - In close-ups, keep off-screen characters in their original blocking locations logically (only framing changes, not blocking).
       - Preserve the same 180-degree axis orientation from the previous shot.
+
+      AUTHORITATIVE STRUCTURED SHOT JSON (PRIMARY SOURCE OF TRUTH):
+      \`\`\`json
+      ${structuredShotJSON}
+      \`\`\`
+      - Treat this JSON as binding production data.
+      - If any prose instruction conflicts with this JSON, JSON WINS.
+      - Character names + reference_image + blocking_id + position are strict continuity keys and must be preserved.
 
       MANDATORY CINEMATIC SPECS:
       - CAMERA ANGLE: EXTREME ${cameraAngle.toUpperCase()}

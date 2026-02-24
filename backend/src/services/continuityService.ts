@@ -64,8 +64,39 @@ export const checkSequenceContinuity = (shots: ShotPlan[], assets: Entity[]): Co
 
     // 3b. Character Position / Blocking Consistency
     const characterPositions: Map<string, string> = new Map();
+    const characterBlockingIds: Map<string, string> = new Map();
     shots.forEach((shot) => {
         shot.visual_breakdown.characters.forEach((char: any) => {
+            const currentBlockingId = (char.blocking_id || '').trim();
+            const lastBlockingId = characterBlockingIds.get(char.name);
+            if (lastBlockingId && currentBlockingId && lastBlockingId !== currentBlockingId) {
+                issues.push({
+                    id: `blocking-id-mismatch-${shot.shot_id}-${char.name}`,
+                    shotId: shot.shot_id,
+                    category: 'other',
+                    severity: 'error',
+                    message: `Blocking ID mismatch for ${char.name}.`,
+                    evidence: `Previously: "${lastBlockingId}". Now: "${currentBlockingId}"`,
+                    suggestedFix: `Keep ${char.name} blocking_id as "${lastBlockingId}" for continuity.`,
+                    fixData: { type: 'update-field', field: 'characters.blocking_id', value: lastBlockingId, charName: char.name },
+                    resolved: false
+                });
+            }
+
+            if (lastBlockingId && !currentBlockingId) {
+                issues.push({
+                    id: `blocking-id-missing-${shot.shot_id}-${char.name}`,
+                    shotId: shot.shot_id,
+                    category: 'other',
+                    severity: 'warning',
+                    message: `Missing blocking_id for ${char.name}.`,
+                    evidence: `Previous shots used blocking_id "${lastBlockingId}" but this shot has none.`,
+                    suggestedFix: `Set blocking_id to "${lastBlockingId}".`,
+                    fixData: { type: 'update-field', field: 'characters.blocking_id', value: lastBlockingId, charName: char.name },
+                    resolved: false
+                });
+            }
+
             const currentPosition = (char.position || '').trim();
             if (!currentPosition) return;
 
@@ -90,6 +121,9 @@ export const checkSequenceContinuity = (shots: ShotPlan[], assets: Entity[]): Co
                 }
             }
 
+            if (currentBlockingId) {
+                characterBlockingIds.set(char.name, currentBlockingId);
+            }
             characterPositions.set(char.name, currentPosition);
         });
     });
