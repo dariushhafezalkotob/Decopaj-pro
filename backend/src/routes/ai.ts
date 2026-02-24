@@ -327,6 +327,7 @@ export default async function aiRoutes(server: FastifyInstance) {
       1. Characters present and their specific outfits, accessories, or equipment mentioned (e.g., "biker leather suit", "red helmet", "heavy boots").
       2. Persistent props/objects in the environment.
       3. Environment mood and time of day.
+      4. MASTER BLOCKING (CRITICAL): Define the fixed spatial map of the scene. Who is seated where? Where is the furniture? This layout MUST be consistent across all shots.
 
       STRICT DIALOGUE ISOLATION (CRITICAL):
       - Anything mentioned INSIDE quotation marks (dialogue) is PHYSICALLY INVISIBLE. 
@@ -360,9 +361,13 @@ export default async function aiRoutes(server: FastifyInstance) {
                                         },
                                         persistent_props: { type: Type.ARRAY, items: { type: Type.STRING } },
                                         environment: { type: Type.STRING },
-                                        time_of_day: { type: Type.STRING }
+                                        time_of_day: { type: Type.STRING },
+                                        master_blocking: {
+                                            type: Type.STRING,
+                                            description: "A fixed spatial map of the scene. Example: 'A=Driver, B=Passenger, C=Backseat-Left'. This is the anchor for all shots."
+                                        }
                                     },
-                                    required: ["characters", "persistent_props", "environment", "time_of_day"]
+                                    required: ["characters", "persistent_props", "environment", "time_of_day", "master_blocking"]
                                 }
                             },
                             required: ["scene_context"]
@@ -454,6 +459,11 @@ export default async function aiRoutes(server: FastifyInstance) {
          - DIALOGUE IS EMOTIONALLY MANDATORY: Dialogue is your PRIMARY source for character emotion. Use the subtext of the words to determine the character's 'expression', 'lighting_effect', and 'body language'. 
          - SPATIAL RELATIONS: Use dialogue flow to determine 'position' and 'eyeline'. Who is talking? Who is listening? Position characters so they are LOOKING at each other during the conversation.
          - SUMMARY: Dialogue = 0% Physical Props, 100% Emotional & Relational Context.
+
+      7. MASTER BLOCKING CONTINUITY (STRICT):
+         - Use this Master Layout: ${sceneContext.master_blocking}
+         - Characters MUST stay in these assigned positions unless the script says they move.
+         - EYELINE: Calculate the character's gaze based on the layout. (Example: If A is the driver and talks to B in the passenger seat, A should look toward the passenger side).
 `;
 
                     const shotResponse = await ai.models.generateContent({
