@@ -728,6 +728,7 @@ const MainApp: React.FC = () => {
 
         const allAssets = passedAssets || [...activeProject.globalAssets, ...activeSequence.assets];
         const shots = (passedShots || [...activeSequence.shots]).map(sh => ({ ...sh }));
+        let sequenceAnchorShotUrl: string | undefined = shots[0]?.image_url;
 
         for (let i = 0; i < shots.length; i++) {
             if (shots[i].image_url) continue; // Skip already rendered shots
@@ -755,7 +756,8 @@ const MainApp: React.FC = () => {
                     activeProject.id,
                     activeSequence.id,
                     state.aiModel,
-                    previousShotUrl
+                    previousShotUrl,
+                    sequenceAnchorShotUrl
                 );
 
                 setState(prev => ({
@@ -771,6 +773,9 @@ const MainApp: React.FC = () => {
 
                 // Keep local sequential state updated so next shot receives previousShotUrl continuity context.
                 shots[i] = { ...shots[i], image_url: imageUrl };
+                if (!sequenceAnchorShotUrl && i === 0 && imageUrl) {
+                    sequenceAnchorShotUrl = imageUrl;
+                }
             } catch (err) {
                 console.error(`Render failed for shot ${i}`, err);
                 setState(prev => ({

@@ -750,7 +750,7 @@ export default async function aiRoutes(server: FastifyInstance) {
     });
 
     server.post('/generate-image', async (request: any, reply) => {
-        const { shot, size, assets, projectName, sequenceTitle, projectId, sequenceId, model: requestedModel, previousShotUrl } = request.body;
+        const { shot, size, assets, projectName, sequenceTitle, projectId, sequenceId, model: requestedModel, previousShotUrl, sequenceAnchorShotUrl } = request.body;
         const ai = getAI();
         const parts: any[] = [];
 
@@ -758,6 +758,23 @@ export default async function aiRoutes(server: FastifyInstance) {
         const model = 'gemini-3-pro-image-preview';
 
         const imageParts: { priority: number, part: any }[] = [];
+
+        // 0. Add Sequence Anchor Context (Highest Priority)
+        if (sequenceAnchorShotUrl) {
+            const anchorRes = await resolveImageResource(sequenceAnchorShotUrl);
+            if (anchorRes) {
+                imageParts.push({
+                    priority: 110,
+                    part: [
+                        { inlineData: { data: anchorRes.data, mimeType: anchorRes.mimeType } },
+                        {
+                            text: `SEQUENCE ANCHOR REFERENCE: This is the master establishing frame for spatial blocking.
+Maintain the same character geography, left/right orientation, and scene axis from this anchor unless the script explicitly indicates movement.`
+                        }
+                    ]
+                });
+            }
+        }
 
         // 1. Add Previous Shot Context (Highest Priority)
         if (previousShotUrl) {
@@ -767,7 +784,7 @@ export default async function aiRoutes(server: FastifyInstance) {
                     priority: 100,
                     part: [
                         { inlineData: { data: prevRes.data, mimeType: prevRes.mimeType } },
-                        { text: `PREVIOUS SHOT REFERENCE: This is the exact frame that immediately precedes the current shot. Maintain visual continuity (characters, outfits, props, lighting) based on this image strictly.` }
+                        { text: `PREVIOUS SHOT REFERENCE: This is the exact frame that immediately precedes the current shot. Maintain temporal continuity (expressions, pose progression, prop state, lighting rhythm) based on this image strictly.` }
                     ]
                 });
             }
@@ -875,6 +892,8 @@ export default async function aiRoutes(server: FastifyInstance) {
       MASTER BLOCKING LOCK (DO NOT VIOLATE):
       - ${blockingMap}
       - These blocking assignments are fixed continuity anchors across all shots.
+      - The sequence anchor image defines the canonical geography.
+      - The previous-shot image defines local temporal progression.
       - DO NOT swap characters, mirror left/right orientation, or relocate anyone unless the script explicitly says they moved.
       - In close-ups, keep off-screen characters in their original blocking locations logically (only framing changes, not blocking).
       - Preserve the same 180-degree axis orientation from the previous shot.
