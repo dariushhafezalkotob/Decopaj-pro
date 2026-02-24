@@ -457,12 +457,13 @@ export default async function aiRoutes(server: FastifyInstance) {
       6. DIALOGUE & INTERACTION LOGIC (STRICT ISOLATION):
          - DIALOGUE IS VISUALLY INVISIBLE: Dialogue text (words characters say) is physically invisible. You MUST NOT add any nouns or items mentioned inside dialogue to the 'objects' array or 'relevant_entities'. (Example: If someone says "Suck a screw," do NOT add a screw to the scene).
          - DIALOGUE IS EMOTIONALLY MANDATORY: Dialogue is your PRIMARY source for character emotion. Use the subtext of the words to determine the character's 'expression', 'lighting_effect', and 'body language'. 
-         - SPATIAL RELATIONS: Use dialogue flow to determine 'position' and 'eyeline'. Who is talking? Who is listening? Position characters so they are LOOKING at each other during the conversation.
+         - SPATIAL RELATIONS: Use dialogue flow to determine eyeline and body/head orientation only. DO NOT change seat/blocking positions for eyeline.
          - SUMMARY: Dialogue = 0% Physical Props, 100% Emotional & Relational Context.
 
       7. MASTER BLOCKING CONTINUITY (STRICT):
          - Use this Master Layout: ${sceneContext.master_blocking}
          - Characters MUST stay in these assigned positions unless the script says they move.
+         - POSITION TEXT MUST BE STABLE: keep the same seat/location label wording for each character across shots (e.g., "driver seat", "front passenger", "rear left") unless movement is explicit.
          - EYELINE: Calculate the character's gaze based on the layout. (Example: If A is the driver and talks to B in the passenger seat, A should look toward the passenger side).
 `;
 

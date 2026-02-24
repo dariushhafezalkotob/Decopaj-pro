@@ -683,6 +683,10 @@ const MainApp: React.FC = () => {
                         updatedVB.characters = updatedVB.characters.map(c =>
                             c.name === charName ? { ...c, appearance: { ...c.appearance, description: value } } : c
                         );
+                    } else if (field === 'characters.position' && charName) {
+                        updatedVB.characters = updatedVB.characters.map(c =>
+                            c.name === charName ? { ...c, position: value } : c
+                        );
                     }
                     return { ...sh, visual_breakdown: updatedVB };
                 });
@@ -719,7 +723,7 @@ const MainApp: React.FC = () => {
         setState(prev => ({ ...prev, isGeneratingImages: true }));
 
         const allAssets = passedAssets || [...activeProject.globalAssets, ...activeSequence.assets];
-        const shots = passedShots || [...activeSequence.shots];
+        const shots = (passedShots || [...activeSequence.shots]).map(sh => ({ ...sh }));
 
         for (let i = 0; i < shots.length; i++) {
             if (shots[i].image_url) continue; // Skip already rendered shots
@@ -760,6 +764,9 @@ const MainApp: React.FC = () => {
                         } : s)
                     } : p)
                 }));
+
+                // Keep local sequential state updated so next shot receives previousShotUrl continuity context.
+                shots[i] = { ...shots[i], image_url: imageUrl };
             } catch (err) {
                 console.error(`Render failed for shot ${i}`, err);
                 setState(prev => ({
@@ -848,6 +855,10 @@ const MainApp: React.FC = () => {
                         } else if (field === 'characters.appearance.description' && charName) {
                             updatedVB.characters = updatedVB.characters.map(c =>
                                 c.name === charName ? { ...c, appearance: { ...c.appearance, description: value } } : c
+                            );
+                        } else if (field === 'characters.position' && charName) {
+                            updatedVB.characters = updatedVB.characters.map(c =>
+                                c.name === charName ? { ...c, position: value } : c
                             );
                         }
                         return { ...sh, visual_breakdown: updatedVB };

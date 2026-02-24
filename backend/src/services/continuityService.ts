@@ -62,6 +62,38 @@ export const checkSequenceContinuity = (shots: ShotPlan[], assets: Entity[]): Co
         });
     });
 
+    // 3b. Character Position / Blocking Consistency
+    const characterPositions: Map<string, string> = new Map();
+    shots.forEach((shot) => {
+        shot.visual_breakdown.characters.forEach((char: any) => {
+            const currentPosition = (char.position || '').trim();
+            if (!currentPosition) return;
+
+            const lastPosition = characterPositions.get(char.name);
+            if (lastPosition && lastPosition !== currentPosition) {
+                const actionText = `${char.actions || ''} ${char.appearance?.description || ''}`.toLowerCase();
+                const movementKeywords = ['moves to', 'switches seat', 'gets out', 'walks to', 'changes position', 'slides over', 'stands up'];
+                const explicitMovement = movementKeywords.some(kw => actionText.includes(kw));
+
+                if (!explicitMovement) {
+                    issues.push({
+                        id: `position-mismatch-${shot.shot_id}-${char.name}`,
+                        shotId: shot.shot_id,
+                        category: 'other',
+                        severity: 'error',
+                        message: `Position mismatch for ${char.name}.`,
+                        evidence: `Previously: "${lastPosition}". Now: "${currentPosition}"`,
+                        suggestedFix: `Keep ${char.name} at "${lastPosition}" unless script/action explicitly states movement.`,
+                        fixData: { type: 'update-field', field: 'characters.position', value: lastPosition, charName: char.name },
+                        resolved: false
+                    });
+                }
+            }
+
+            characterPositions.set(char.name, currentPosition);
+        });
+    });
+
     // 4. Camera Direction (180 Axis Proxy)
     // If consecutive shots are both "Profile Right" or "Profile Left", it might be an axis jump depending on characters.
     // Simplifying for V1: Flag if perspective changes drastically without intermediate shots
