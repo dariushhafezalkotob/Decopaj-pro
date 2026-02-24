@@ -821,11 +821,21 @@ export default async function aiRoutes(server: FastifyInstance) {
         const lensDesc = focalLength <= 24 ? "Wide-angle lens with slight perspective distortion"
             : focalLength >= 85 ? "Telephoto lens with compressed depth"
                 : "Standard cinematic prime lens";
+        const blockingMap = shot.visual_breakdown.characters
+            .map((c: any) => `${c.name}: ${c.position}`)
+            .join('\n      - ');
 
         parts.push({
             text: `
       DIRECTORIAL NOTES:
       ${(shot.visual_breakdown.notes || []).map((n: string) => `- ${n}`).join('\n')}
+
+      MASTER BLOCKING LOCK (DO NOT VIOLATE):
+      - ${blockingMap}
+      - These blocking assignments are fixed continuity anchors across all shots.
+      - DO NOT swap characters, mirror left/right orientation, or relocate anyone unless the script explicitly says they moved.
+      - In close-ups, keep off-screen characters in their original seats logically (only framing changes, not blocking).
+      - Preserve the same 180-degree axis orientation from the previous shot.
 
       MANDATORY CINEMATIC SPECS:
       - CAMERA ANGLE: EXTREME ${cameraAngle.toUpperCase()}
