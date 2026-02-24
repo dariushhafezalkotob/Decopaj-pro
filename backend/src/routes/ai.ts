@@ -328,6 +328,12 @@ export default async function aiRoutes(server: FastifyInstance) {
       2. Persistent props/objects in the environment.
       3. Environment mood and time of day.
 
+      STRICT DIALOGUE ISOLATION (CRITICAL):
+      - Anything mentioned INSIDE quotation marks (dialogue) is PHYSICALLY INVISIBLE. 
+      - You MUST NOT list characters, outfits, or props that appear ONLY in dialogue.
+      - Example: If a character says "I left my gun in the car", and the scene is in a kitchen, do NOT list "gun" or "car" as props unless the action description says they are there.
+      - Example 2: If a character says "You look like a pirate", do NOT list "pirate hat" or "parrot" unless the action segment describes them wearing them.
+
       Script: "${script}"`;
 
                 const stage1Response = await ai.models.generateContent({
