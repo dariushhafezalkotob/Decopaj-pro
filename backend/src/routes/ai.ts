@@ -443,11 +443,11 @@ export default async function aiRoutes(server: FastifyInstance) {
       4. Use provided ref tags (e.g., image 1) from asset map.
       5. MIRRORING RULE: Any clothing, armor, or accessory with a reference image (e.g., image 9) that a character is wearing MUST also be listed in the 'objects' array for this shot. This ensures the visual reference is applied correctly by the image generator.
 
-      6. DIALOGUE & INTERACTION LOGIC (CRITICAL):
-         - FILTER METAPHORS: Dialogue often mentions things that aren't physically present (e.g., "suck a screw", "break a leg"). You MUST NOT add these to the 'objects' array or 'relevant_entities' unless they are physically in the character's hand or environment.
-         - EMOTIONAL SUBTEXT: Analyze dialogue to set the 'expression' and 'lighting_effect'. If a character is being insulted ("racist tin can"), their expression should be 'angry' or 'stoic', and the other character should be 'dismissive' or 'hostile'.
-         - SPATIAL RELATIONS: Use dialogue flow to determine 'position' and 'eyeline'. If Leo is talking to Buffalo, Leo's position should be "Facing Buffalo, look of disdain."
-         - THEME: Focus on the RELATIONSHIP and MOOD created by the words, not the nouns used in the words.
+      6. DIALOGUE & INTERACTION LOGIC (STRICT ISOLATION):
+         - DIALOGUE IS VISUALLY INVISIBLE: Dialogue text (words characters say) is physically invisible. You MUST NOT add any nouns or items mentioned inside dialogue to the 'objects' array or 'relevant_entities'. (Example: If someone says "Suck a screw," do NOT add a screw to the scene).
+         - DIALOGUE IS EMOTIONALLY MANDATORY: Dialogue is your PRIMARY source for character emotion. Use the subtext of the words to determine the character's 'expression', 'lighting_effect', and 'body language'. 
+         - SPATIAL RELATIONS: Use dialogue flow to determine 'position' and 'eyeline'. Who is talking? Who is listening? Position characters so they are LOOKING at each other during the conversation.
+         - SUMMARY: Dialogue = 0% Physical Props, 100% Emotional & Relational Context.
 `;
 
                     const shotResponse = await ai.models.generateContent({
