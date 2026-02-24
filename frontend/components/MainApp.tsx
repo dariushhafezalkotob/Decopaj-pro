@@ -683,14 +683,6 @@ const MainApp: React.FC = () => {
                         updatedVB.characters = updatedVB.characters.map(c =>
                             c.name === charName ? { ...c, appearance: { ...c.appearance, description: value } } : c
                         );
-                    } else if (field === 'characters.blocking_id' && charName) {
-                        updatedVB.characters = updatedVB.characters.map(c =>
-                            c.name === charName ? { ...c, blocking_id: value } : c
-                        );
-                    } else if (field === 'characters.position' && charName) {
-                        updatedVB.characters = updatedVB.characters.map(c =>
-                            c.name === charName ? { ...c, position: value } : c
-                        );
                     }
                     return { ...sh, visual_breakdown: updatedVB };
                 });
@@ -727,8 +719,7 @@ const MainApp: React.FC = () => {
         setState(prev => ({ ...prev, isGeneratingImages: true }));
 
         const allAssets = passedAssets || [...activeProject.globalAssets, ...activeSequence.assets];
-        const shots = (passedShots || [...activeSequence.shots]).map(sh => ({ ...sh }));
-        let sequenceAnchorShotUrl: string | undefined = shots[0]?.image_url;
+        const shots = passedShots || [...activeSequence.shots];
 
         for (let i = 0; i < shots.length; i++) {
             if (shots[i].image_url) continue; // Skip already rendered shots
@@ -756,8 +747,7 @@ const MainApp: React.FC = () => {
                     activeProject.id,
                     activeSequence.id,
                     state.aiModel,
-                    previousShotUrl,
-                    sequenceAnchorShotUrl
+                    previousShotUrl
                 );
 
                 setState(prev => ({
@@ -770,12 +760,6 @@ const MainApp: React.FC = () => {
                         } : s)
                     } : p)
                 }));
-
-                // Keep local sequential state updated so next shot receives previousShotUrl continuity context.
-                shots[i] = { ...shots[i], image_url: imageUrl };
-                if (!sequenceAnchorShotUrl && i === 0 && imageUrl) {
-                    sequenceAnchorShotUrl = imageUrl;
-                }
             } catch (err) {
                 console.error(`Render failed for shot ${i}`, err);
                 setState(prev => ({
@@ -864,14 +848,6 @@ const MainApp: React.FC = () => {
                         } else if (field === 'characters.appearance.description' && charName) {
                             updatedVB.characters = updatedVB.characters.map(c =>
                                 c.name === charName ? { ...c, appearance: { ...c.appearance, description: value } } : c
-                            );
-                        } else if (field === 'characters.blocking_id' && charName) {
-                            updatedVB.characters = updatedVB.characters.map(c =>
-                                c.name === charName ? { ...c, blocking_id: value } : c
-                            );
-                        } else if (field === 'characters.position' && charName) {
-                            updatedVB.characters = updatedVB.characters.map(c =>
-                                c.name === charName ? { ...c, position: value } : c
                             );
                         }
                         return { ...sh, visual_breakdown: updatedVB };

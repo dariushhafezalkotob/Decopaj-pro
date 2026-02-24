@@ -327,7 +327,6 @@ export default async function aiRoutes(server: FastifyInstance) {
       1. Characters present and their specific outfits, accessories, or equipment mentioned (e.g., "biker leather suit", "red helmet", "heavy boots").
       2. Persistent props/objects in the environment.
       3. Environment mood and time of day.
-      4. MASTER BLOCKING (CRITICAL): Define the fixed spatial map of the scene. Who is seated where? Where is the furniture? This layout MUST be consistent across all shots.
 
       STRICT DIALOGUE ISOLATION (CRITICAL):
       - Anything mentioned INSIDE quotation marks (dialogue) is PHYSICALLY INVISIBLE. 
@@ -361,13 +360,9 @@ export default async function aiRoutes(server: FastifyInstance) {
                                         },
                                         persistent_props: { type: Type.ARRAY, items: { type: Type.STRING } },
                                         environment: { type: Type.STRING },
-                                        time_of_day: { type: Type.STRING },
-                                        master_blocking: {
-                                            type: Type.STRING,
-                                            description: "A fixed spatial map of the scene. Example: 'A=Driver, B=Passenger, C=Backseat-Left'. This is the anchor for all shots."
-                                        }
+                                        time_of_day: { type: Type.STRING }
                                     },
-                                    required: ["characters", "persistent_props", "environment", "time_of_day", "master_blocking"]
+                                    required: ["characters", "persistent_props", "environment", "time_of_day"]
                                 }
                             },
                             required: ["scene_context"]
@@ -457,15 +452,8 @@ export default async function aiRoutes(server: FastifyInstance) {
       6. DIALOGUE & INTERACTION LOGIC (STRICT ISOLATION):
          - DIALOGUE IS VISUALLY INVISIBLE: Dialogue text (words characters say) is physically invisible. You MUST NOT add any nouns or items mentioned inside dialogue to the 'objects' array or 'relevant_entities'. (Example: If someone says "Suck a screw," do NOT add a screw to the scene).
          - DIALOGUE IS EMOTIONALLY MANDATORY: Dialogue is your PRIMARY source for character emotion. Use the subtext of the words to determine the character's 'expression', 'lighting_effect', and 'body language'. 
-         - SPATIAL RELATIONS: Use dialogue flow to determine eyeline and body/head orientation only. DO NOT change seat/blocking positions for eyeline.
+         - SPATIAL RELATIONS: Use dialogue flow to determine 'position' and 'eyeline'. Who is talking? Who is listening? Position characters so they are LOOKING at each other during the conversation.
          - SUMMARY: Dialogue = 0% Physical Props, 100% Emotional & Relational Context.
-
-      7. MASTER BLOCKING CONTINUITY (STRICT):
-         - Use this Master Layout: ${sceneContext.master_blocking}
-         - Assign each character a stable blocking_id (examples: "driver", "front_passenger", "rear_center", "booth_left", "booth_right", "aisle_chair"). Reuse the same blocking_id for that character in every shot.
-         - Characters MUST stay in these assigned positions unless the script says they move.
-         - POSITION TEXT MUST BE STABLE: keep the same seat/location label wording for each character across shots (e.g., "driver seat", "front passenger", "rear left") unless movement is explicit.
-         - EYELINE: Calculate the character's gaze based on the layout. (Example: If A is the driver and talks to B in the passenger seat, A should look toward the passenger side).
 `;
 
                     const shotResponse = await ai.models.generateContent({
@@ -500,13 +488,12 @@ export default async function aiRoutes(server: FastifyInstance) {
                                                     properties: {
                                                         name: { type: Type.STRING },
                                                         reference_image: { type: Type.STRING },
-                                                        blocking_id: { type: Type.STRING },
                                                         position: { type: Type.STRING },
                                                         appearance: { type: Type.OBJECT, properties: { description: { type: Type.STRING }, expression: { type: Type.STRING } }, required: ["description", "expression"] },
                                                         actions: { type: Type.STRING },
                                                         lighting_effect: { type: Type.STRING }
                                                     },
-                                                    required: ["name", "reference_image", "blocking_id", "position", "appearance", "actions", "lighting_effect"]
+                                                    required: ["name", "reference_image", "position", "appearance", "actions", "lighting_effect"]
                                                 }
                                             },
                                             objects: {
@@ -565,27 +552,6 @@ export default async function aiRoutes(server: FastifyInstance) {
                     });
 
                     const shotJSON = JSON.parse(shotResponse.text || '{}');
-                    // Ensure blocking_id continuity even if model occasionally omits it.
-                    const prevBlockingByName = new Map<string, string>(
-                        (previousShotJSON?.visual_breakdown?.characters || [])
-                            .filter((c: any) => c?.name && c?.blocking_id)
-                            .map((c: any) => [c.name, c.blocking_id])
-                    );
-                    const toBlockingId = (input: string) =>
-                        input
-                            .toLowerCase()
-                            .replace(/[^a-z0-9]+/g, '_')
-                            .replace(/^_+|_+$/g, '')
-                            .slice(0, 40);
-                    if (shotJSON?.visual_breakdown?.characters?.length) {
-                        shotJSON.visual_breakdown.characters = shotJSON.visual_breakdown.characters.map((c: any) => {
-                            if (c.blocking_id && String(c.blocking_id).trim()) return c;
-                            const inherited = prevBlockingByName.get(c.name);
-                            if (inherited) return { ...c, blocking_id: inherited };
-                            const fromPosition = c.position ? toBlockingId(String(c.position)) : '';
-                            return { ...c, blocking_id: fromPosition || toBlockingId(String(c.name || 'character')) };
-                        });
-                    }
                     // Add the original action segment for reference
                     shotJSON.action_segment = plan.action_segment;
 
@@ -673,7 +639,6 @@ export default async function aiRoutes(server: FastifyInstance) {
                                                 properties: {
                                                     name: { type: Type.STRING },
                                                     reference_image: { type: Type.STRING },
-                                                    blocking_id: { type: Type.STRING },
                                                     position: { type: Type.STRING },
                                                     appearance: { type: Type.OBJECT, properties: { description: { type: Type.STRING }, expression: { type: Type.STRING } }, required: ["description", "expression"] },
                                                     actions: { type: Type.STRING },
@@ -750,7 +715,7 @@ export default async function aiRoutes(server: FastifyInstance) {
     });
 
     server.post('/generate-image', async (request: any, reply) => {
-        const { shot, size, assets, projectName, sequenceTitle, projectId, sequenceId, model: requestedModel, previousShotUrl, sequenceAnchorShotUrl } = request.body;
+        const { shot, size, assets, projectName, sequenceTitle, projectId, sequenceId, model: requestedModel, previousShotUrl } = request.body;
         const ai = getAI();
         const parts: any[] = [];
 
@@ -758,23 +723,6 @@ export default async function aiRoutes(server: FastifyInstance) {
         const model = 'gemini-3-pro-image-preview';
 
         const imageParts: { priority: number, part: any }[] = [];
-
-        // 0. Add Sequence Anchor Context (Highest Priority)
-        if (sequenceAnchorShotUrl) {
-            const anchorRes = await resolveImageResource(sequenceAnchorShotUrl);
-            if (anchorRes) {
-                imageParts.push({
-                    priority: 110,
-                    part: [
-                        { inlineData: { data: anchorRes.data, mimeType: anchorRes.mimeType } },
-                        {
-                            text: `SEQUENCE ANCHOR REFERENCE: This is the master establishing frame for spatial blocking.
-Maintain the same character geography, left/right orientation, and scene axis from this anchor unless the script explicitly indicates movement.`
-                        }
-                    ]
-                });
-            }
-        }
 
         // 1. Add Previous Shot Context (Highest Priority)
         if (previousShotUrl) {
@@ -784,7 +732,7 @@ Maintain the same character geography, left/right orientation, and scene axis fr
                     priority: 100,
                     part: [
                         { inlineData: { data: prevRes.data, mimeType: prevRes.mimeType } },
-                        { text: `PREVIOUS SHOT REFERENCE: This is the exact frame that immediately precedes the current shot. Maintain temporal continuity (expressions, pose progression, prop state, lighting rhythm) based on this image strictly.` }
+                        { text: `PREVIOUS SHOT REFERENCE: This is the exact frame that immediately precedes the current shot. Maintain visual continuity (characters, outfits, props, lighting) based on this image strictly.` }
                     ]
                 });
             }
@@ -815,7 +763,6 @@ Maintain the same character geography, left/right orientation, and scene axis fr
                         { inlineData: { data: charRes.data, mimeType: charRes.mimeType } },
                         {
                             text: `CHARACTER IDENTITY [${charShot.reference_image}]: "${charShot.name}".
-        BLOCKING ID (STRICT): ${charShot.blocking_id || 'unknown'}
         MANDATORY FACIAL FEATURES: Use this reference image.
         FRAME POSITION: ${charShot.position}
         EXPRESSION: ${charShot.appearance.expression}
@@ -863,48 +810,11 @@ Maintain the same character geography, left/right orientation, and scene axis fr
         const lensDesc = focalLength <= 24 ? "Wide-angle lens with slight perspective distortion"
             : focalLength >= 85 ? "Telephoto lens with compressed depth"
                 : "Standard cinematic prime lens";
-        const blockingMap = shot.visual_breakdown.characters
-            .map((c: any) => `${c.name} [${c.blocking_id || 'missing_id'}]: ${c.position}`)
-            .join('\n      - ');
-        const structuredShotJSON = JSON.stringify({
-            scene: shot.visual_breakdown.scene,
-            characters: shot.visual_breakdown.characters.map((c: any) => ({
-                name: c.name,
-                reference_image: c.reference_image,
-                blocking_id: c.blocking_id,
-                position: c.position,
-                appearance: c.appearance,
-                actions: c.actions,
-                lighting_effect: c.lighting_effect
-            })),
-            camera: shot.visual_breakdown.camera,
-            lighting: shot.visual_breakdown.lighting,
-            framing_composition: shot.visual_breakdown.framing_composition,
-            notes: shot.visual_breakdown.notes || [],
-            objects: shot.visual_breakdown.objects || []
-        }, null, 2);
 
         parts.push({
             text: `
       DIRECTORIAL NOTES:
       ${(shot.visual_breakdown.notes || []).map((n: string) => `- ${n}`).join('\n')}
-
-      MASTER BLOCKING LOCK (DO NOT VIOLATE):
-      - ${blockingMap}
-      - These blocking assignments are fixed continuity anchors across all shots.
-      - The sequence anchor image defines the canonical geography.
-      - The previous-shot image defines local temporal progression.
-      - DO NOT swap characters, mirror left/right orientation, or relocate anyone unless the script explicitly says they moved.
-      - In close-ups, keep off-screen characters in their original blocking locations logically (only framing changes, not blocking).
-      - Preserve the same 180-degree axis orientation from the previous shot.
-
-      AUTHORITATIVE STRUCTURED SHOT JSON (PRIMARY SOURCE OF TRUTH):
-      \`\`\`json
-      ${structuredShotJSON}
-      \`\`\`
-      - Treat this JSON as binding production data.
-      - If any prose instruction conflicts with this JSON, JSON WINS.
-      - Character names + reference_image + blocking_id + position are strict continuity keys and must be preserved.
 
       MANDATORY CINEMATIC SPECS:
       - CAMERA ANGLE: EXTREME ${cameraAngle.toUpperCase()}
