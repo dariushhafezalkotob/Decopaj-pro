@@ -173,7 +173,7 @@ export const generateImageProxy = async (shot: any, size: string, assets: any[],
         const res = await fetch(`${API_URL}/ai/generate-image`, {
             method: 'POST',
             headers: getHeaders(),
-            body: JSON.stringify({ shot, size, assets, projectName, sequenceTitle, projectId, sequenceId, model: aiModel, previousShotUrl, anchorShotUrl: (arguments[0] as any).anchorShotUrl })
+            body: JSON.stringify({ shot, size, assets, projectName, sequenceTitle, projectId, sequenceId, model: aiModel, previousShotUrl, anchorShotUrl })
         });
 
         if (!res.ok) {
