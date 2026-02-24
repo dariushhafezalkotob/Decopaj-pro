@@ -166,14 +166,14 @@ export const pollJobStatus = async (jobId: string, onProgress?: (progress: strin
     throw new Error("Generation timed out. Please try again.");
 };
 
-export const generateImageProxy = async (shot: any, size: string, assets: any[], projectName: string, sequenceTitle: string, projectId: string, sequenceId: string, aiModel: string, previousShotUrl?: string) => {
+export const generateImageProxy = async (shot: any, size: string, assets: any[], projectName: string, sequenceTitle: string, projectId: string, sequenceId: string, aiModel: string, previousShotUrl?: string, anchorShotUrl?: string) => {
     console.log(`Starting image generation for shot ${shot.shot_id}...`);
     const startTime = Date.now();
     try {
         const res = await fetch(`${API_URL}/ai/generate-image`, {
             method: 'POST',
             headers: getHeaders(),
-            body: JSON.stringify({ shot, size, assets, projectName, sequenceTitle, projectId, sequenceId, model: aiModel, previousShotUrl })
+            body: JSON.stringify({ shot, size, assets, projectName, sequenceTitle, projectId, sequenceId, model: aiModel, previousShotUrl, anchorShotUrl: (arguments[0] as any).anchorShotUrl })
         });
 
         if (!res.ok) {

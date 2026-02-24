@@ -715,7 +715,7 @@ export default async function aiRoutes(server: FastifyInstance) {
     });
 
     server.post('/generate-image', async (request: any, reply) => {
-        const { shot, size, assets, projectName, sequenceTitle, projectId, sequenceId, model: requestedModel, previousShotUrl } = request.body;
+        const { shot, size, assets, projectName, sequenceTitle, projectId, sequenceId, model: requestedModel, previousShotUrl, anchorShotUrl } = request.body;
         const ai = getAI();
         const parts: any[] = [];
 
@@ -724,7 +724,21 @@ export default async function aiRoutes(server: FastifyInstance) {
 
         const imageParts: { priority: number, part: any }[] = [];
 
-        // 1. Add Previous Shot Context (Highest Priority)
+        // 0. Add Master Anchor Shot (Highest Priority for Spatial Blocking)
+        if (anchorShotUrl) {
+            const anchorRes = await resolveImageResource(anchorShotUrl);
+            if (anchorRes) {
+                imageParts.push({
+                    priority: 110,
+                    part: [
+                        { inlineData: { data: anchorRes.data, mimeType: anchorRes.mimeType } },
+                        { text: `MASTER SHOT REFERENCE (BLOCKING ANCHOR): This is the first frame of this sequence. It defines the FIXED spatial layout, character positions, and background architecture. Use this as your primary map for blocking.` }
+                    ]
+                });
+            }
+        }
+
+        // 1. Add Previous Shot Context (High Priority for Continuity)
         if (previousShotUrl) {
             const prevRes = await resolveImageResource(previousShotUrl);
             if (prevRes) {
