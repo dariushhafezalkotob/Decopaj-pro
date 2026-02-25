@@ -4,7 +4,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Project, Sequence, ShotPlan, ImageSize, AppState, Entity } from '../types';
 import { Reorder } from 'framer-motion';
-import { identifyEntities, performFullDecopaj, analyzeCustomShot, generateShotImage, editShotImage } from '../services/geminiService';
+import { identifyEntities, performFullDecopaj, analyzeCustomShot, generateShotImage, editShotImage, breakdownScript, planSingleShot } from '../services/geminiService';
 import { getProjects, createProject, updateProject, deleteProject, logout, checkContinuityProxy, BACKEND_URL } from '../services/api';
 import { ShotCard } from './ShotCard';
 
