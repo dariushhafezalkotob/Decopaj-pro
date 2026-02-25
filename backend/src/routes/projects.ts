@@ -1,6 +1,6 @@
 
 import { FastifyInstance } from 'fastify';
-import { Project } from '../models';
+import { Project, Media } from '../models';
 import { saveMedia, deleteProjectMedia } from '../services/mediaService';
 
 const processProjectImages = async (projectId: string, data: any) => {
@@ -201,11 +201,7 @@ export default async function projectRoutes(server: FastifyInstance) {
             });
         }
 
-        const MediaModel = server.mongo?.db?.collection('media') || (Project.model('Media') as any);
-        // Using the model directly is safer if we don't have fastify-mongodb
-        const { Media: MediaModelFromModels } = require('../models');
-
-        const allMedia = await MediaModelFromModels.find({}, { id: 1 });
+        const allMedia = await Media.find({}, { id: 1 }).lean();
         const orphanIds: string[] = [];
 
         for (const media of allMedia) {
@@ -216,7 +212,7 @@ export default async function projectRoutes(server: FastifyInstance) {
 
         let deletedCount = 0;
         if (orphanIds.length > 0) {
-            const result = await MediaModelFromModels.deleteMany({ id: { $in: orphanIds } });
+            const result = await Media.deleteMany({ id: { $in: orphanIds } });
             deletedCount = result.deletedCount || 0;
         }
 
