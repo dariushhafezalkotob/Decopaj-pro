@@ -63,6 +63,10 @@ const processProjectImages = async (projectId: string, data: any) => {
 export default async function projectRoutes(server: FastifyInstance) {
 
     server.addHook('preValidation', (request: any, reply, done) => {
+        // Exempt cleanup route from JWT authentication for browser access
+        if (request.url.endsWith('/cleanup')) {
+            return done();
+        }
         try {
             request.jwtVerify().then(() => done(), (err: any) => reply.send(err));
         } catch (err) {
