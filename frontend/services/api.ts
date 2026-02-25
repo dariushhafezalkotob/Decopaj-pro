@@ -131,27 +131,6 @@ export const analyzeCustomShotProxy = async (description: string, assets: any[])
     return await pollJobStatus(jobId);
 };
 
-export const breakdownScriptProxy = async (script: string, onProgress?: (progress: string) => void) => {
-    const res = await fetch(`${API_URL}/ai/breakdown-script`, {
-        method: 'POST',
-        headers: getHeaders(),
-        body: JSON.stringify({ script })
-    });
-    if (!res.ok) throw new Error("Script Breakdown Failed");
-    const { jobId } = await res.json();
-    return await pollJobStatus(jobId, onProgress);
-};
-
-export const planSingleShotProxy = async (plan: any, sceneContext: any, assets: any[], previousShotJSON?: any, anchorShotUrl?: string) => {
-    const res = await fetch(`${API_URL}/ai/plan-single-shot`, {
-        method: 'POST',
-        headers: getHeaders(),
-        body: JSON.stringify({ plan, sceneContext, assets, previousShotJSON, anchorShotUrl })
-    });
-    if (!res.ok) throw new Error("Shot Planning Failed");
-    return await res.json();
-};
-
 // Polling helper for async jobs
 export const pollJobStatus = async (jobId: string, onProgress?: (progress: string) => void): Promise<any> => {
     const maxAttempts = 100; // 100 * 3s = 300s (5 minutes)
@@ -187,14 +166,14 @@ export const pollJobStatus = async (jobId: string, onProgress?: (progress: strin
     throw new Error("Generation timed out. Please try again.");
 };
 
-export const generateImageProxy = async (shot: any, size: string, assets: any[], projectName: string, sequenceTitle: string, projectId: string, sequenceId: string, aiModel: string, previousShotUrl?: string, anchorShotUrl?: string, returnRawData?: boolean) => {
+export const generateImageProxy = async (shot: any, size: string, assets: any[], projectName: string, sequenceTitle: string, projectId: string, sequenceId: string, aiModel: string, previousShotUrl?: string) => {
     console.log(`Starting image generation for shot ${shot.shot_id}...`);
     const startTime = Date.now();
     try {
         const res = await fetch(`${API_URL}/ai/generate-image`, {
             method: 'POST',
             headers: getHeaders(),
-            body: JSON.stringify({ shot, size, assets, projectName, sequenceTitle, projectId, sequenceId, model: aiModel, previousShotUrl, anchorShotUrl, returnRawData })
+            body: JSON.stringify({ shot, size, assets, projectName, sequenceTitle, projectId, sequenceId, model: aiModel, previousShotUrl })
         });
 
         if (!res.ok) {
@@ -208,10 +187,10 @@ export const generateImageProxy = async (shot: any, size: string, assets: any[],
         if (result.jobId) {
             console.log(`Async job started: ${result.jobId}. Polling...`);
             const data = await pollJobStatus(result.jobId);
-            return data.image_data || data.image_url;
+            return data.image_url;
         }
 
-        return result.image_data || result.image_url;
+        return result.image_url;
     } catch (err: any) {
         const duration = (Date.now() - startTime) / 1000;
         console.error(`Image generation NETWORK ERROR for ${shot.shot_id} after ${duration}s:`, err);
@@ -219,14 +198,14 @@ export const generateImageProxy = async (shot: any, size: string, assets: any[],
     }
 };
 
-export const editShotProxy = async (originalBase64: string, editPrompt: string, shot: any, projectName: string, sequenceTitle: string, projectId: string, sequenceId: string, assets: any[], aiModel: string, returnRawData?: boolean) => {
+export const editShotProxy = async (originalBase64: string, editPrompt: string, shot: any, projectName: string, sequenceTitle: string, projectId: string, sequenceId: string, assets: any[], aiModel: string) => {
     console.log(`Starting shot edit for shot ${shot.shot_id}...`);
     const startTime = Date.now();
     try {
         const res = await fetch(`${API_URL}/ai/edit-shot`, {
             method: 'POST',
             headers: getHeaders(),
-            body: JSON.stringify({ originalBase64, editPrompt, shot, projectName, sequenceTitle, projectId, sequenceId, assets, model: aiModel, returnRawData })
+            body: JSON.stringify({ originalBase64, editPrompt, shot, projectName, sequenceTitle, projectId, sequenceId, assets, model: aiModel })
         });
 
         if (!res.ok) {

@@ -68,7 +68,7 @@ export const Project = mongoose.model('Project', ProjectSchema);
 
 const MediaSchema = new Schema({
     id: { type: String, required: true, unique: true },
-    data: { type: Schema.Types.Buffer, required: true }, // Binary Data
+    data: { type: String, required: true }, // Base64
     mimeType: { type: String, default: 'image/png' }
 }, { timestamps: true });
 

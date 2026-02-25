@@ -1,6 +1,6 @@
 
 import { ShotPlan, ImageSize, Entity, AnalysisResponse, EntityIdentificationResponse, VisualBreakdown, AIModel } from "../types";
-import { identifyEntitiesProxy, analyzeScriptProxy, analyzeCustomShotProxy, generateImageProxy, editShotProxy, breakdownScriptProxy, planSingleShotProxy } from "./api";
+import { identifyEntitiesProxy, analyzeScriptProxy, analyzeCustomShotProxy, generateImageProxy, editShotProxy } from "./api";
 
 // STAGE 1: Identify additional locations and items, respecting the global cast
 export const identifyEntities = async (script: string, globalCast: Entity[]): Promise<EntityIdentificationResponse> => {
@@ -10,14 +10,6 @@ export const identifyEntities = async (script: string, globalCast: Entity[]): Pr
 // STAGE 2: Perform full cinematic breakdown using casted assets
 export const performFullDecopaj = async (script: string, assets: Entity[], onProgress?: (progress: string) => void): Promise<AnalysisResponse> => {
     return await analyzeScriptProxy(script, assets, onProgress);
-};
-
-export const breakdownScript = async (script: string, onProgress?: (progress: string) => void): Promise<{ sceneContext: any, shots: any[] }> => {
-    return await breakdownScriptProxy(script, onProgress);
-};
-
-export const planSingleShot = async (plan: any, sceneContext: any, assets: Entity[], previousShotJSON?: any, anchorShotUrl?: string): Promise<ShotPlan> => {
-    return await planSingleShotProxy(plan, sceneContext, assets, previousShotJSON, anchorShotUrl);
 };
 
 export const analyzeCustomShot = async (description: string, assets: Entity[]): Promise<ShotPlan> => {
@@ -33,11 +25,9 @@ export const generateShotImage = async (
     projectId: string,
     sequenceId: string,
     aiModel: AIModel,
-    previousShotUrl?: string,
-    anchorShotUrl?: string,
-    returnRawData?: boolean
+    previousShotUrl?: string
 ): Promise<string> => {
-    return await generateImageProxy(shot, size, assets, projectName, sequenceTitle, projectId, sequenceId, aiModel, previousShotUrl, anchorShotUrl, returnRawData);
+    return await generateImageProxy(shot, size, assets, projectName, sequenceTitle, projectId, sequenceId, aiModel, previousShotUrl);
 };
 
 export const editShotImage = async (
@@ -49,8 +39,7 @@ export const editShotImage = async (
     projectId: string,
     sequenceId: string,
     assets: any[],
-    aiModel: AIModel,
-    returnRawData?: boolean
+    aiModel: AIModel
 ): Promise<{ image_url: string, visual_breakdown: VisualBreakdown }> => {
-    return await editShotProxy(originalBase64, editPrompt, shot, projectName, sequenceTitle, projectId, sequenceId, assets, aiModel, returnRawData);
+    return await editShotProxy(originalBase64, editPrompt, shot, projectName, sequenceTitle, projectId, sequenceId, assets, aiModel);
 };

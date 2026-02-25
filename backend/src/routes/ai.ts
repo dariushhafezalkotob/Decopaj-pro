@@ -305,161 +305,7 @@ export default async function aiRoutes(server: FastifyInstance) {
         return JSON.parse(response.text || '{"entities": []}');
     });
 
-    // 2. Breakdown Script (Stage 1 & 2 of the new flow)
-    server.post('/breakdown-script', async (request: any, reply) => {
-        const { script } = request.body;
-        const ai = getAI();
-        const jobId = `breakdown_${Date.now()}_${Math.random().toString(36).substring(7)}`;
-
-        activeJobs.set(jobId, { status: 'processing' });
-
-        (async () => {
-            try {
-                // --- STAGE 1: Scene Analysis ---
-                activeJobs.set(jobId, { status: 'processing', progress: 'Analyzing Characters & Environment...' });
-                const stage1Prompt = `Role: Film Researcher. Analyze script for characters (outfits/props), environment, and mood. 
-                STRICT DIALOGUE ISOLATION: Objects in dialogue don't exist physically.
-                Script: "${script}"`;
-
-                const stage1Response = await ai.models.generateContent({
-                    model: 'gemini-3-pro-preview',
-                    contents: stage1Prompt,
-                    config: {
-                        responseMimeType: "application/json",
-                        responseSchema: {
-                            type: Type.OBJECT,
-                            properties: {
-                                scene_context: {
-                                    type: Type.OBJECT,
-                                    properties: {
-                                        characters: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, outfit_description: { type: Type.STRING } }, required: ["name", "outfit_description"] } },
-                                        persistent_props: { type: Type.ARRAY, items: { type: Type.STRING } },
-                                        environment: { type: Type.STRING },
-                                        time_of_day: { type: Type.STRING }
-                                    },
-                                    required: ["characters", "persistent_props", "environment", "time_of_day"]
-                                }
-                            }
-                        }
-                    }
-                });
-
-                const sceneContext = JSON.parse(stage1Response.text || '{}').scene_context;
-
-                // --- STAGE 2: Shot Summaries ---
-                activeJobs.set(jobId, { status: 'processing', progress: 'Planning Shot Sequence...' });
-                const stage2Prompt = `Role: Director. Based on Analysis & Script, list the technical shots needed.
-                Analysis: ${JSON.stringify(sceneContext)}
-                Script: "${script}"`;
-
-                const stage2Response = await ai.models.generateContent({
-                    model: 'gemini-3-pro-preview',
-                    contents: stage2Prompt,
-                    config: {
-                        responseMimeType: "application/json",
-                        responseSchema: {
-                            type: Type.OBJECT,
-                            properties: {
-                                shot_plan: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { index: { type: Type.NUMBER }, summary: { type: Type.STRING }, action_segment: { type: Type.STRING } }, required: ["index", "summary", "action_segment"] } }
-                            }
-                        }
-                    }
-                });
-
-                const plannedShots = JSON.parse(stage2Response.text || '{}').shot_plan;
-
-                activeJobs.set(jobId, {
-                    status: 'completed',
-                    data: { sceneContext, shots: plannedShots }
-                });
-            } catch (err: any) {
-                console.error(`[BREAKDOWN ${jobId}] Failed:`, err.message);
-                activeJobs.set(jobId, { status: 'failed', error: err.message });
-            }
-        })();
-
-        return { jobId };
-    });
-
-    // 3. Plan Single Shot (Stage 3 of the new flow - with Anchor Support)
-    server.post('/plan-single-shot', async (request: any, reply) => {
-        const { plan, sceneContext, assets, previousShotJSON, anchorShotUrl } = request.body;
-        const ai = getAI();
-
-        const assetMapText = (assets || []).map((a: any) => `- ${a.name} (${a.type}): USE REF TAG "${a.refTag}"`).join('\n');
-
-        let anchorContent = "";
-        const parts: any[] = [];
-
-        if (anchorShotUrl) {
-            const anchorRes = await resolveImageResource(anchorShotUrl);
-            if (anchorRes) {
-                parts.push({ inlineData: { data: anchorRes.data, mimeType: anchorRes.mimeType } });
-                anchorContent = `MASTER SHOT REFERENCE (SPATIAL ANCHOR): The attached image is the absolute reference for this scene.
-                - Treat this image as "Reference Reality".
-                - Every character position, background detail, and light source from this image MUST remain fixed in space.
-                - If this shot is an "over-the-shoulder" or "close-up", it MUST match the specific blocking shown in this Master Shot.`;
-            }
-        }
-
-        const prompt = `Role: Cinematographer. Create technical JSON for this shot.
-        
-        MANDATORY ASSETS:
-        ${assetMapText}
-        
-        SCENE CONTEXT: ${JSON.stringify(sceneContext)}
-        SHOT SUMMARY: "${plan.summary}"
-        ACTION SEGMENT: "${plan.action_segment}"
-        ${anchorContent}
-        
-        PREVIOUS SHOT: ${previousShotJSON ? JSON.stringify(previousShotJSON) : "None."}
-        
-        RULES:
-        - Maintain strict continuity from previous shot.
-        - If Master Anchor is provided, prioritize its spatial layout over everything else.
-        - Output Technical Director JSON.`;
-
-        parts.push({ text: prompt });
-
-        const response = await ai.models.generateContent({
-            model: 'gemini-3-pro-preview',
-            contents: parts,
-            config: {
-                responseMimeType: "application/json",
-                responseSchema: {
-                    // Reuse the existing schema from Stage 3
-                    type: Type.OBJECT,
-                    properties: {
-                        shot_id: { type: Type.STRING },
-                        plan_type: { type: Type.STRING },
-                        camera_specs: { type: Type.STRING },
-                        relevant_entities: { type: Type.ARRAY, items: { type: Type.STRING } },
-                        visual_breakdown: {
-                            type: Type.OBJECT,
-                            properties: {
-                                scene: { type: Type.OBJECT, properties: { environment: { type: Type.OBJECT, properties: { location_type: { type: Type.STRING }, description: { type: Type.STRING }, reference_image: { type: Type.STRING } }, required: ["location_type", "description"] }, time: { type: Type.STRING }, mood: { type: Type.STRING }, color_palette: { type: Type.STRING } }, required: ["environment", "time", "mood", "color_palette"] },
-                                characters: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, reference_image: { type: Type.STRING }, position: { type: Type.STRING }, appearance: { type: Type.OBJECT, properties: { description: { type: Type.STRING }, expression: { type: Type.STRING } }, required: ["description", "expression"] }, actions: { type: Type.STRING }, lighting_effect: { type: Type.STRING } }, required: ["name", "reference_image", "position", "appearance", "actions", "lighting_effect"] } },
-                                objects: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, reference_image: { type: Type.STRING }, details: { type: Type.STRING }, action: { type: Type.STRING } }, required: ["name", "details"] } },
-                                framing_composition: { type: Type.OBJECT, properties: { shot_type: { type: Type.STRING }, framing: { type: Type.STRING }, perspective: { type: Type.STRING }, camera_angle: { type: Type.STRING }, shot_size: { type: Type.STRING }, depth: { type: Type.STRING }, focus: { type: Type.STRING }, scale_emphasis: { type: Type.STRING } }, required: ["shot_type", "framing", "perspective"] },
-                                camera: { type: Type.OBJECT, properties: { lens: { type: Type.OBJECT, properties: { focal_length_mm: { type: Type.NUMBER }, type: { type: Type.STRING } }, required: ["focal_length_mm", "type"] }, settings: { type: Type.OBJECT, properties: { aperture: { type: Type.STRING }, focus: { type: Type.STRING } }, required: ["aperture", "focus"] } }, required: ["lens", "settings"] },
-                                lighting: { type: Type.OBJECT, properties: { key: { type: Type.STRING }, quality: { type: Type.STRING }, color_contrast: { type: Type.STRING }, lighting_style: { type: Type.STRING } }, required: ["key", "quality", "color_contrast"] },
-                                notes: { type: Type.ARRAY, items: { type: Type.STRING } }
-                            },
-                            required: ["scene", "characters", "camera", "lighting", "framing_composition"]
-                        }
-                    },
-                    required: ["shot_id", "plan_type", "visual_breakdown", "relevant_entities"]
-                }
-            }
-        });
-
-        const shotJSON = JSON.parse(response.text || '{}');
-        shotJSON.action_segment = plan.action_segment;
-        return shotJSON;
-    });
-
-    // Keep legacy Full Decopaj for retro-compatibility if needed, 
-    // though the frontend will move to the new granular endpoints.
+    // 2. Full Decopaj
     server.post('/analyze-script', async (request: any, reply) => {
         const { script, assets } = request.body;
         const ai = getAI();
@@ -869,7 +715,7 @@ export default async function aiRoutes(server: FastifyInstance) {
     });
 
     server.post('/generate-image', async (request: any, reply) => {
-        const { shot, size, assets, projectName, sequenceTitle, projectId, sequenceId, model: requestedModel, previousShotUrl, anchorShotUrl, returnRawData } = request.body;
+        const { shot, size, assets, projectName, sequenceTitle, projectId, sequenceId, model: requestedModel, previousShotUrl } = request.body;
         const ai = getAI();
         const parts: any[] = [];
 
@@ -878,21 +724,7 @@ export default async function aiRoutes(server: FastifyInstance) {
 
         const imageParts: { priority: number, part: any }[] = [];
 
-        // 0. Add Master Anchor Shot (Highest Priority for Spatial Blocking)
-        if (anchorShotUrl) {
-            const anchorRes = await resolveImageResource(anchorShotUrl);
-            if (anchorRes) {
-                imageParts.push({
-                    priority: 110,
-                    part: [
-                        { inlineData: { data: anchorRes.data, mimeType: anchorRes.mimeType } },
-                        { text: `MASTER SHOT REFERENCE (BLOCKING ANCHOR): This is the first frame of this sequence. It defines the FIXED spatial layout, character positions, and background architecture. Use this as your primary map for blocking.` }
-                    ]
-                });
-            }
-        }
-
-        // 1. Add Previous Shot Context (High Priority for Continuity)
+        // 1. Add Previous Shot Context (Highest Priority)
         if (previousShotUrl) {
             const prevRes = await resolveImageResource(previousShotUrl);
             if (prevRes) {
@@ -1074,15 +906,11 @@ export default async function aiRoutes(server: FastifyInstance) {
                             }, modelPath);
                         }
 
-                        if (returnRawData && imageUrl && !imageUrl.startsWith('http')) {
-                            activeJobs.set(jobId, { status: 'completed', data: { image_data: imageUrl.startsWith('data:') ? imageUrl : `data:image/png;base64,${imageUrl}` } });
-                        } else {
-                            const finalUrl = (imageUrl && imageUrl.startsWith('http'))
-                                ? imageUrl
-                                : await saveMedia(`${projectId || 'global'}_${sequenceId || 'default'}_shot_${shot.shot_id}${requestedModel === 'flux-comic' ? '_comic' : ''}`, imageUrl || '');
+                        const finalUrl = (imageUrl && imageUrl.startsWith('http'))
+                            ? imageUrl
+                            : await saveMedia(`${projectId || 'global'}_${sequenceId || 'default'}_shot_${shot.shot_id}${requestedModel === 'flux-comic' ? '_comic' : ''}`, imageUrl || '');
 
-                            activeJobs.set(jobId, { status: 'completed', data: { image_url: finalUrl } });
-                        }
+                        activeJobs.set(jobId, { status: 'completed', data: { image_url: finalUrl } });
                         console.log(`[JOB ${jobId}] Completed in ${(Date.now() - startTime) / 1000}s`);
 
                         // Cleanup job after 1h
@@ -1107,9 +935,6 @@ export default async function aiRoutes(server: FastifyInstance) {
                 });
                 const part = response.candidates?.[0]?.content?.parts?.find((p: any) => p.inlineData);
                 if (part?.inlineData?.data) {
-                    if (returnRawData) {
-                        return { image_data: `data:image/png;base64,${part.inlineData.data}` };
-                    }
                     const imageUrl = await saveMedia(
                         `${projectId || 'global'}_${sequenceId || 'default'}_shot_${shot.shot_id}`,
                         part.inlineData.data
@@ -1126,7 +951,7 @@ export default async function aiRoutes(server: FastifyInstance) {
 
     // 4. Edit Shot
     server.post('/edit-shot', async (request: any, reply) => {
-        const { originalBase64, editPrompt, shot, projectName, sequenceTitle, projectId, sequenceId, assets, model: requestedModel, returnRawData } = request.body;
+        const { originalBase64, editPrompt, shot, projectName, sequenceTitle, projectId, sequenceId, assets, model: requestedModel } = request.body;
         const ai = getAI();
         const mimeType = 'image/png';
 
@@ -1195,15 +1020,11 @@ export default async function aiRoutes(server: FastifyInstance) {
                             imageUrl = await generateImageSeedream(comicPrompt, imageConfig, fluxModelPath);
                         }
 
-                        if (returnRawData && imageUrl && !imageUrl.startsWith('http')) {
-                            activeJobs.set(jobId, { status: 'completed', data: { image_data: imageUrl.startsWith('data:') ? imageUrl : `data:image/png;base64,${imageUrl}`, visual_breakdown: shot.visual_breakdown } });
-                        } else {
-                            const finalUrl = (imageUrl && imageUrl.startsWith('http'))
-                                ? imageUrl
-                                : await saveMedia(`${projectId || 'global'}_${sequenceId || 'default'}_shot_${shot.shot_id}_edit_${Date.now()}`, imageUrl || '');
+                        const finalUrl = (imageUrl && imageUrl.startsWith('http'))
+                            ? imageUrl
+                            : await saveMedia(`${projectId || 'global'}_${sequenceId || 'default'}_shot_${shot.shot_id}_edit_${Date.now()}`, imageUrl || '');
 
-                            activeJobs.set(jobId, { status: 'completed', data: { image_url: finalUrl, visual_breakdown: shot.visual_breakdown } });
-                        }
+                        activeJobs.set(jobId, { status: 'completed', data: { image_url: finalUrl, visual_breakdown: shot.visual_breakdown } });
                         console.log(`[JOB ${jobId}] Edit completed in ${(Date.now() - startTime) / 1000}s`);
                         setTimeout(() => activeJobs.delete(jobId), 3600000);
                     } catch (err: any) {
@@ -1235,23 +1056,16 @@ export default async function aiRoutes(server: FastifyInstance) {
                 console.error(`Gemini failed to return image data. Reason: ${finishReason}`, JSON.stringify(imgResponse, null, 2));
                 throw new Error(finishReason === 'SAFETY' ? "Edit blocked by safety filters." : "Visual update failed.");
             }
-            if (imgPart?.inlineData?.data) {
-                if (returnRawData) {
-                    return {
-                        image_data: `data:image/png;base64,${imgPart.inlineData.data}`,
-                        visual_breakdown: shot.visual_breakdown
-                    };
-                }
-                const newImageUrl = await saveMedia(
-                    `${projectId || 'global'}_${sequenceId || 'default'}_shot_${shot.shot_id}_edit_${Date.now()}`,
-                    imgPart.inlineData.data
-                );
 
-                return {
-                    image_url: newImageUrl,
-                    visual_breakdown: shot.visual_breakdown
-                };
-            }
+            const newImageUrl = await saveMedia(
+                `${projectId || 'global'}_${sequenceId || 'default'}_shot_${shot.shot_id}_edit_${Date.now()}`,
+                imgPart.inlineData.data
+            );
+
+            return {
+                image_url: newImageUrl,
+                visual_breakdown: shot.visual_breakdown
+            };
 
         } catch (err: any) {
             console.error("Edit shot error:", err);
