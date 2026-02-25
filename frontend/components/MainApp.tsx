@@ -485,7 +485,10 @@ const MainApp: React.FC = () => {
                 activeSequence.title,
                 activeProject.id,
                 activeSequence.id,
-                state.aiModel
+                state.aiModel,
+                undefined,
+                undefined,
+                true // returnRawData
             );
             setState(prev => ({
                 ...prev,
@@ -540,7 +543,8 @@ const MainApp: React.FC = () => {
                 activeProject.id,
                 activeSequence.id,
                 allAssets,
-                state.aiModel
+                state.aiModel,
+                true // returnRawData
             );
 
             setState(prev => ({
@@ -620,7 +624,10 @@ const MainApp: React.FC = () => {
                 activeSequence.title,
                 activeProject.id,
                 activeSequence.id,
-                state.aiModel
+                state.aiModel,
+                undefined,
+                undefined,
+                true // returnRawData
             );
 
             // Update shot with image
@@ -749,7 +756,8 @@ const MainApp: React.FC = () => {
                     activeSequence.id,
                     state.aiModel,
                     previousShotUrl,
-                    anchorShotUrl
+                    anchorShotUrl,
+                    true // returnRawData
                 );
 
                 setState(prev => ({

@@ -715,7 +715,7 @@ export default async function aiRoutes(server: FastifyInstance) {
     });
 
     server.post('/generate-image', async (request: any, reply) => {
-        const { shot, size, assets, projectName, sequenceTitle, projectId, sequenceId, model: requestedModel, previousShotUrl, anchorShotUrl } = request.body;
+        const { shot, size, assets, projectName, sequenceTitle, projectId, sequenceId, model: requestedModel, previousShotUrl, anchorShotUrl, returnRawData } = request.body;
         const ai = getAI();
         const parts: any[] = [];
 
@@ -920,11 +920,15 @@ export default async function aiRoutes(server: FastifyInstance) {
                             }, modelPath);
                         }
 
-                        const finalUrl = (imageUrl && imageUrl.startsWith('http'))
-                            ? imageUrl
-                            : await saveMedia(`${projectId || 'global'}_${sequenceId || 'default'}_shot_${shot.shot_id}${requestedModel === 'flux-comic' ? '_comic' : ''}`, imageUrl || '');
+                        if (returnRawData && imageUrl && !imageUrl.startsWith('http')) {
+                            activeJobs.set(jobId, { status: 'completed', data: { image_data: imageUrl.startsWith('data:') ? imageUrl : `data:image/png;base64,${imageUrl}` } });
+                        } else {
+                            const finalUrl = (imageUrl && imageUrl.startsWith('http'))
+                                ? imageUrl
+                                : await saveMedia(`${projectId || 'global'}_${sequenceId || 'default'}_shot_${shot.shot_id}${requestedModel === 'flux-comic' ? '_comic' : ''}`, imageUrl || '');
 
-                        activeJobs.set(jobId, { status: 'completed', data: { image_url: finalUrl } });
+                            activeJobs.set(jobId, { status: 'completed', data: { image_url: finalUrl } });
+                        }
                         console.log(`[JOB ${jobId}] Completed in ${(Date.now() - startTime) / 1000}s`);
 
                         // Cleanup job after 1h
@@ -949,6 +953,9 @@ export default async function aiRoutes(server: FastifyInstance) {
                 });
                 const part = response.candidates?.[0]?.content?.parts?.find((p: any) => p.inlineData);
                 if (part?.inlineData?.data) {
+                    if (returnRawData) {
+                        return { image_data: `data:image/png;base64,${part.inlineData.data}` };
+                    }
                     const imageUrl = await saveMedia(
                         `${projectId || 'global'}_${sequenceId || 'default'}_shot_${shot.shot_id}`,
                         part.inlineData.data
@@ -965,7 +972,7 @@ export default async function aiRoutes(server: FastifyInstance) {
 
     // 4. Edit Shot
     server.post('/edit-shot', async (request: any, reply) => {
-        const { originalBase64, editPrompt, shot, projectName, sequenceTitle, projectId, sequenceId, assets, model: requestedModel } = request.body;
+        const { originalBase64, editPrompt, shot, projectName, sequenceTitle, projectId, sequenceId, assets, model: requestedModel, returnRawData } = request.body;
         const ai = getAI();
         const mimeType = 'image/png';
 
@@ -1034,11 +1041,15 @@ export default async function aiRoutes(server: FastifyInstance) {
                             imageUrl = await generateImageSeedream(comicPrompt, imageConfig, fluxModelPath);
                         }
 
-                        const finalUrl = (imageUrl && imageUrl.startsWith('http'))
-                            ? imageUrl
-                            : await saveMedia(`${projectId || 'global'}_${sequenceId || 'default'}_shot_${shot.shot_id}_edit_${Date.now()}`, imageUrl || '');
+                        if (returnRawData && imageUrl && !imageUrl.startsWith('http')) {
+                            activeJobs.set(jobId, { status: 'completed', data: { image_data: imageUrl.startsWith('data:') ? imageUrl : `data:image/png;base64,${imageUrl}`, visual_breakdown: shot.visual_breakdown } });
+                        } else {
+                            const finalUrl = (imageUrl && imageUrl.startsWith('http'))
+                                ? imageUrl
+                                : await saveMedia(`${projectId || 'global'}_${sequenceId || 'default'}_shot_${shot.shot_id}_edit_${Date.now()}`, imageUrl || '');
 
-                        activeJobs.set(jobId, { status: 'completed', data: { image_url: finalUrl, visual_breakdown: shot.visual_breakdown } });
+                            activeJobs.set(jobId, { status: 'completed', data: { image_url: finalUrl, visual_breakdown: shot.visual_breakdown } });
+                        }
                         console.log(`[JOB ${jobId}] Edit completed in ${(Date.now() - startTime) / 1000}s`);
                         setTimeout(() => activeJobs.delete(jobId), 3600000);
                     } catch (err: any) {
@@ -1070,16 +1081,23 @@ export default async function aiRoutes(server: FastifyInstance) {
                 console.error(`Gemini failed to return image data. Reason: ${finishReason}`, JSON.stringify(imgResponse, null, 2));
                 throw new Error(finishReason === 'SAFETY' ? "Edit blocked by safety filters." : "Visual update failed.");
             }
+            if (imgPart?.inlineData?.data) {
+                if (returnRawData) {
+                    return {
+                        image_data: `data:image/png;base64,${imgPart.inlineData.data}`,
+                        visual_breakdown: shot.visual_breakdown
+                    };
+                }
+                const newImageUrl = await saveMedia(
+                    `${projectId || 'global'}_${sequenceId || 'default'}_shot_${shot.shot_id}_edit_${Date.now()}`,
+                    imgPart.inlineData.data
+                );
 
-            const newImageUrl = await saveMedia(
-                `${projectId || 'global'}_${sequenceId || 'default'}_shot_${shot.shot_id}_edit_${Date.now()}`,
-                imgPart.inlineData.data
-            );
-
-            return {
-                image_url: newImageUrl,
-                visual_breakdown: shot.visual_breakdown
-            };
+                return {
+                    image_url: newImageUrl,
+                    visual_breakdown: shot.visual_breakdown
+                };
+            }
 
         } catch (err: any) {
             console.error("Edit shot error:", err);

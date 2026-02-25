@@ -166,14 +166,14 @@ export const pollJobStatus = async (jobId: string, onProgress?: (progress: strin
     throw new Error("Generation timed out. Please try again.");
 };
 
-export const generateImageProxy = async (shot: any, size: string, assets: any[], projectName: string, sequenceTitle: string, projectId: string, sequenceId: string, aiModel: string, previousShotUrl?: string, anchorShotUrl?: string) => {
+export const generateImageProxy = async (shot: any, size: string, assets: any[], projectName: string, sequenceTitle: string, projectId: string, sequenceId: string, aiModel: string, previousShotUrl?: string, anchorShotUrl?: string, returnRawData?: boolean) => {
     console.log(`Starting image generation for shot ${shot.shot_id}...`);
     const startTime = Date.now();
     try {
         const res = await fetch(`${API_URL}/ai/generate-image`, {
             method: 'POST',
             headers: getHeaders(),
-            body: JSON.stringify({ shot, size, assets, projectName, sequenceTitle, projectId, sequenceId, model: aiModel, previousShotUrl, anchorShotUrl })
+            body: JSON.stringify({ shot, size, assets, projectName, sequenceTitle, projectId, sequenceId, model: aiModel, previousShotUrl, anchorShotUrl, returnRawData })
         });
 
         if (!res.ok) {
@@ -187,10 +187,10 @@ export const generateImageProxy = async (shot: any, size: string, assets: any[],
         if (result.jobId) {
             console.log(`Async job started: ${result.jobId}. Polling...`);
             const data = await pollJobStatus(result.jobId);
-            return data.image_url;
+            return data.image_data || data.image_url;
         }
 
-        return result.image_url;
+        return result.image_data || result.image_url;
     } catch (err: any) {
         const duration = (Date.now() - startTime) / 1000;
         console.error(`Image generation NETWORK ERROR for ${shot.shot_id} after ${duration}s:`, err);
@@ -198,14 +198,14 @@ export const generateImageProxy = async (shot: any, size: string, assets: any[],
     }
 };
 
-export const editShotProxy = async (originalBase64: string, editPrompt: string, shot: any, projectName: string, sequenceTitle: string, projectId: string, sequenceId: string, assets: any[], aiModel: string) => {
+export const editShotProxy = async (originalBase64: string, editPrompt: string, shot: any, projectName: string, sequenceTitle: string, projectId: string, sequenceId: string, assets: any[], aiModel: string, returnRawData?: boolean) => {
     console.log(`Starting shot edit for shot ${shot.shot_id}...`);
     const startTime = Date.now();
     try {
         const res = await fetch(`${API_URL}/ai/edit-shot`, {
             method: 'POST',
             headers: getHeaders(),
-            body: JSON.stringify({ originalBase64, editPrompt, shot, projectName, sequenceTitle, projectId, sequenceId, assets, model: aiModel })
+            body: JSON.stringify({ originalBase64, editPrompt, shot, projectName, sequenceTitle, projectId, sequenceId, assets, model: aiModel, returnRawData })
         });
 
         if (!res.ok) {

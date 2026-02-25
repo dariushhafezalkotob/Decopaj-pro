@@ -1,7 +1,7 @@
 
 import { FastifyInstance } from 'fastify';
 import { Project } from '../models';
-import { saveMedia } from '../services/mediaService';
+import { saveMedia, deleteProjectMedia } from '../services/mediaService';
 
 const processProjectImages = async (projectId: string, data: any) => {
     // Process global assets (new)
@@ -150,6 +150,11 @@ export default async function projectRoutes(server: FastifyInstance) {
         if (!project && projectId.match(/^[0-9a-fA-F]{24}$/)) {
             project = await Project.findOneAndDelete({ _id: projectId, user_id: userId });
         }
+
+        if (project) {
+            await deleteProjectMedia(projectId);
+        }
+
         return { message: "Deleted" };
     });
 
@@ -168,5 +173,57 @@ export default async function projectRoutes(server: FastifyInstance) {
             );
         }
         return { message: "Synced" };
+    });
+
+    // Temporary endpoint to trigger orphan cleanup
+    server.post('/cleanup', async (request: any, reply) => {
+        // Simple orphan cleanup logic integrated into route
+        const projects = await Project.find({});
+        const referencedMediaIds = new Set<string>();
+
+        const trackEntityMedia = (entity: any) => {
+            if (typeof entity?.imageData === 'string' && entity.imageData.startsWith('/api/media/')) {
+                referencedMediaIds.add(entity.imageData.replace('/api/media/', ''));
+            }
+        };
+
+        for (const project of projects as any[]) {
+            (project.globalAssets || []).forEach(trackEntityMedia);
+            (project.globalCast || []).forEach(trackEntityMedia);
+
+            (project.sequences || []).forEach((seq: any) => {
+                (seq.assets || []).forEach(trackEntityMedia);
+                (seq.shots || []).forEach((shot: any) => {
+                    if (typeof shot?.image_url === 'string' && shot.image_url.startsWith('/api/media/')) {
+                        referencedMediaIds.add(shot.image_url.replace('/api/media/', ''));
+                    }
+                });
+            });
+        }
+
+        const MediaModel = server.mongo?.db?.collection('media') || (Project.model('Media') as any);
+        // Using the model directly is safer if we don't have fastify-mongodb
+        const { Media: MediaModelFromModels } = require('../models');
+
+        const allMedia = await MediaModelFromModels.find({}, { id: 1 });
+        const orphanIds: string[] = [];
+
+        for (const media of allMedia) {
+            if (!referencedMediaIds.has(media.id)) {
+                orphanIds.push(media.id);
+            }
+        }
+
+        let deletedCount = 0;
+        if (orphanIds.length > 0) {
+            const result = await MediaModelFromModels.deleteMany({ id: { $in: orphanIds } });
+            deletedCount = result.deletedCount || 0;
+        }
+
+        return {
+            message: "Cleanup complete",
+            referencedCount: referencedMediaIds.size,
+            deletedCount
+        };
     });
 }

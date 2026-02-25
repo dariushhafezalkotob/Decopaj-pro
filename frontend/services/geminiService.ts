@@ -26,9 +26,10 @@ export const generateShotImage = async (
     sequenceId: string,
     aiModel: AIModel,
     previousShotUrl?: string,
-    anchorShotUrl?: string
+    anchorShotUrl?: string,
+    returnRawData?: boolean
 ): Promise<string> => {
-    return await generateImageProxy(shot, size, assets, projectName, sequenceTitle, projectId, sequenceId, aiModel, previousShotUrl, anchorShotUrl);
+    return await generateImageProxy(shot, size, assets, projectName, sequenceTitle, projectId, sequenceId, aiModel, previousShotUrl, anchorShotUrl, returnRawData);
 };
 
 export const editShotImage = async (
@@ -40,7 +41,8 @@ export const editShotImage = async (
     projectId: string,
     sequenceId: string,
     assets: any[],
-    aiModel: AIModel
+    aiModel: AIModel,
+    returnRawData?: boolean
 ): Promise<{ image_url: string, visual_breakdown: VisualBreakdown }> => {
-    return await editShotProxy(originalBase64, editPrompt, shot, projectName, sequenceTitle, projectId, sequenceId, assets, aiModel);
+    return await editShotProxy(originalBase64, editPrompt, shot, projectName, sequenceTitle, projectId, sequenceId, assets, aiModel, returnRawData);
 };

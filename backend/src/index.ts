@@ -77,9 +77,8 @@ server.get('/api/media/:mediaId', async (request: any, reply) => {
             return reply.code(404).send({ message: "Media not found" });
         }
 
-        console.log(`Media found! Size: ${media.data.length} chars, Type: ${media.mimeType}`);
-        const buffer = Buffer.from(media.data, 'base64');
-        reply.type(media.mimeType || 'image/png').send(buffer);
+        console.log(`Media found! Size: ${media.rawBuffer.length} bytes, Type: ${media.mimeType}`);
+        reply.type(media.mimeType || 'image/png').send(media.rawBuffer);
     } catch (err: any) {
         console.error(`Error serving media ${mediaId}:`, err.message);
         reply.code(500).send({ message: "Error retrieving media" });
