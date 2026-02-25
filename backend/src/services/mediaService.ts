@@ -25,13 +25,27 @@ export const getMedia = async (id: string) => {
     const media = await Media.findOne({ id });
     if (!media) return null;
 
-    // Convert Buffer back to base64 for consumers that expect it (like AI service)
-    // but the raw buffer is also available in the 'data' field
+    const data = media.data as Buffer;
+
+    // Check if this is legacy base64 data stored as a string in the DB (now wrapped in a Buffer by Mongoose)
+    // Legacy PNG base64 starts with 'iVBOR', JPEG starts with '/9j/'
+    // New binary PNG starts with 0x89 0x50 0x4E 0x47
+    const preview = data.slice(0, 10).toString('utf8');
+    const isLegacyBase64 = preview.startsWith('iVBOR') || preview.startsWith('/9j/') || preview.startsWith('data:image');
+
+    let base64Data = isLegacyBase64 ? data.toString('utf8') : data.toString('base64');
+
+    // Strip prefix if it exists in the string
+    if (base64Data.includes('base64,')) {
+        base64Data = base64Data.split('base64,')[1];
+    }
+    const rawBuffer = isLegacyBase64 ? Buffer.from(base64Data.replace(/^data:image\/[a-z]+;base64,/, ''), 'base64') : data;
+
     return {
         id: media.id,
-        data: (media.data as Buffer).toString('base64'),
+        data: base64Data,
         mimeType: media.mimeType,
-        rawBuffer: media.data as Buffer
+        rawBuffer: rawBuffer
     };
 };
 
