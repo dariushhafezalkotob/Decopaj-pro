@@ -175,8 +175,17 @@ export default async function projectRoutes(server: FastifyInstance) {
         return { message: "Synced" };
     });
 
-    // Temporary endpoint to trigger orphan cleanup
+    // Temporary endpoint to trigger orphan cleanup (Supports both GET and POST for convenience)
+    server.get('/cleanup', async (request: any, reply) => {
+        // ... recycle the POST logic ...
+        return await triggerCleanup(request, reply);
+    });
+
     server.post('/cleanup', async (request: any, reply) => {
+        return await triggerCleanup(request, reply);
+    });
+
+    async function triggerCleanup(request: any, reply: any) {
         // Simple orphan cleanup logic integrated into route
         const projects = await Project.find({});
         const referencedMediaIds = new Set<string>();
@@ -221,5 +230,5 @@ export default async function projectRoutes(server: FastifyInstance) {
             referencedCount: referencedMediaIds.size,
             deletedCount
         };
-    });
+    }
 }
