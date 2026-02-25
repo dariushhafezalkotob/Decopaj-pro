@@ -131,6 +131,27 @@ export const analyzeCustomShotProxy = async (description: string, assets: any[])
     return await pollJobStatus(jobId);
 };
 
+export const breakdownScriptProxy = async (script: string, onProgress?: (progress: string) => void) => {
+    const res = await fetch(`${API_URL}/ai/breakdown-script`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({ script })
+    });
+    if (!res.ok) throw new Error("Script Breakdown Failed");
+    const { jobId } = await res.json();
+    return await pollJobStatus(jobId, onProgress);
+};
+
+export const planSingleShotProxy = async (plan: any, sceneContext: any, assets: any[], previousShotJSON?: any, anchorShotUrl?: string) => {
+    const res = await fetch(`${API_URL}/ai/plan-single-shot`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({ plan, sceneContext, assets, previousShotJSON, anchorShotUrl })
+    });
+    if (!res.ok) throw new Error("Shot Planning Failed");
+    return await res.json();
+};
+
 // Polling helper for async jobs
 export const pollJobStatus = async (jobId: string, onProgress?: (progress: string) => void): Promise<any> => {
     const maxAttempts = 100; // 100 * 3s = 300s (5 minutes)

@@ -663,38 +663,30 @@ const MainApp: React.FC = () => {
 
     const handleGenerateStoryboard = async () => {
         if (!activeProject || !activeSequence) return;
-        setState(prev => ({ ...prev, isAnalyzing: true, error: null, analysisProgress: 'Initializing analysis...' }));
-
-        const allAssets = [...activeProject.globalAssets, ...activeSequence.assets];
+        setState(prev => ({ ...prev, isAnalyzing: true, error: null, analysisProgress: 'Analyzing Script Structure...' }));
 
         try {
-            // STEP 1: Full Cinematic Decopaj (Multi-stage)
-            const analysis = await performFullDecopaj(activeSequence.script, allAssets, (progress) => {
+            // NEW STAGE 1: Granular Breakdown (No technical JSON yet, just slugs)
+            const { sceneContext, shots } = await breakdownScript(activeSequence.script, (progress) => {
                 setState(prev => ({ ...prev, analysisProgress: progress }));
             });
 
-            // STEP 2: Automatic Continuity Check
-            const continuityRes = await checkContinuityProxy(analysis.shots, allAssets);
-
-            // STEP 3: AUTO-APPLY FIXES
-            let finalShots = [...analysis.shots];
-            continuityRes.issues.forEach((issue: any) => {
-                if (!issue.fixData) return;
-                const { field, value, charName } = issue.fixData;
-                finalShots = finalShots.map(sh => {
-                    if (sh.shot_id !== issue.shotId) return sh;
-                    const updatedVB = { ...sh.visual_breakdown };
-                    if (field === 'scene.time') {
-                        updatedVB.scene.time = value;
-                    } else if (field === 'characters.appearance.description' && charName) {
-                        updatedVB.characters = updatedVB.characters.map(c =>
-                            c.name === charName ? { ...c, appearance: { ...c.appearance, description: value } } : c
-                        );
-                    }
-                    return { ...sh, visual_breakdown: updatedVB };
-                });
-                issue.resolved = true;
-            });
+            // Create placeholder shots in the UI
+            const placeholderShots: ShotPlan[] = shots.map((s: any) => ({
+                shot_id: `shot_${s.index}`,
+                plan_type: 'placeholder',
+                camera_specs: '',
+                action_segment: s.action_segment,
+                visual_breakdown: {
+                    scene: { environment: { location_type: '', description: s.summary }, time: '', mood: '', color_palette: '' },
+                    characters: [],
+                    objects: [],
+                    framing_composition: { shot_type: '', framing: '', perspective: '' },
+                    camera: { lens: { focal_length_mm: 0, type: '' }, settings: { aperture: '', focus: '' } },
+                    lighting: { key: '', quality: '', color_contrast: '' }
+                },
+                relevant_entities: []
+            }));
 
             setState(prev => ({
                 ...prev,
@@ -704,16 +696,15 @@ const MainApp: React.FC = () => {
                     ...p,
                     sequences: p.sequences.map(s => s.id === prev.activeSequenceId ? {
                         ...s,
-                        shots: finalShots,
-                        continuityIssues: continuityRes.issues,
+                        shots: placeholderShots,
                         status: 'analyzed'
                     } : s)
                 } : p)
             }));
 
-            // AUTO-START RENDERING: Skip manual confirmation
+            // AUTO-START SEQUENTIAL RENDERING (The Loop)
             setTimeout(() => {
-                handleStartRendering(finalShots, allAssets);
+                handleStartRendering(placeholderShots, [...activeProject.globalAssets, ...activeSequence.assets], sceneContext);
             }, 500);
 
         } catch (error: any) {
@@ -721,33 +712,60 @@ const MainApp: React.FC = () => {
         }
     };
 
-    const handleStartRendering = async (passedShots?: any[], passedAssets?: any[]) => {
+    const handleStartRendering = async (passedShots?: any[], passedAssets?: any[], sceneContext?: any) => {
         if (!activeProject || !activeSequence) return;
         setState(prev => ({ ...prev, isGeneratingImages: true }));
 
         const allAssets = passedAssets || [...activeProject.globalAssets, ...activeSequence.assets];
         const shots = passedShots || [...activeSequence.shots];
 
+        let previousShotJSON: any = null;
+        let masterAnchorUrl: string | undefined = undefined;
+
         for (let i = 0; i < shots.length; i++) {
-            if (shots[i].image_url) continue; // Skip already rendered shots
+            let currentShot = shots[i];
+
+            // 1. Mark as loading
+            setState(prev => ({
+                ...prev,
+                projects: prev.projects.map(p => p.id === prev.activeProjectId ? {
+                    ...p,
+                    sequences: p.sequences.map(s => s.id === prev.activeSequenceId ? {
+                        ...s,
+                        shots: s.shots.map((sh, idx) => idx === i ? { ...sh, loading: true } : sh)
+                    } : s)
+                } : p)
+            }));
 
             try {
-                setState(prev => ({
-                    ...prev,
-                    projects: prev.projects.map(p => p.id === prev.activeProjectId ? {
-                        ...p,
-                        sequences: p.sequences.map(s => s.id === prev.activeSequenceId ? {
-                            ...s,
-                            shots: s.shots.map((sh, idx) => idx === i ? { ...sh, loading: true } : sh)
-                        } : s)
-                    } : p)
-                }));
+                // 2. Generate detailed JSON if it's a placeholder
+                if (currentShot.plan_type === 'placeholder') {
+                    console.log(`Planning Shot ${i + 1}...`);
+                    currentShot = await planSingleShot(
+                        { summary: currentShot.visual_breakdown.scene.environment.description, action_segment: currentShot.action_segment },
+                        sceneContext,
+                        allAssets,
+                        previousShotJSON,
+                        masterAnchorUrl // Pass Shot 1 image as anchor for all subsequent shots
+                    );
 
-                const previousShotUrl = i > 0 ? shots[i - 1].image_url : undefined;
-                const anchorShotUrl = (i > 0 && shots[0].image_url) ? shots[0].image_url : undefined;
+                    // Update state with JSON
+                    setState(prev => ({
+                        ...prev,
+                        projects: prev.projects.map(p => p.id === prev.activeProjectId ? {
+                            ...p,
+                            sequences: p.sequences.map(s => s.id === prev.activeSequenceId ? {
+                                ...s,
+                                shots: s.shots.map((sh, idx) => idx === i ? { ...currentShot, loading: true } : sh)
+                            } : s)
+                        } : p)
+                    }));
+                }
 
+                // 3. Generate Image
+                console.log(`Generating Image for Shot ${i + 1}...`);
                 const imageUrl = await generateShotImage(
-                    shots[i],
+                    currentShot,
                     state.imageSize,
                     allAssets,
                     activeProject.name,
@@ -755,25 +773,34 @@ const MainApp: React.FC = () => {
                     activeProject.id,
                     activeSequence.id,
                     state.aiModel,
-                    previousShotUrl,
-                    anchorShotUrl,
+                    previousShotJSON?.image_url,
+                    masterAnchorUrl,
                     true // returnRawData
                 );
 
+                // Update state with image and clear loading
                 setState(prev => ({
                     ...prev,
                     projects: prev.projects.map(p => p.id === prev.activeProjectId ? {
                         ...p,
                         sequences: p.sequences.map(s => s.id === prev.activeSequenceId ? {
                             ...s,
-                            shots: s.shots.map((sh, idx) => idx === i ? { ...sh, image_url: imageUrl, loading: false } : sh)
+                            shots: s.shots.map((sh, idx) => idx === i ? { ...currentShot, image_url: imageUrl, loading: false } : sh)
                         } : s)
                     } : p)
                 }));
-            } catch (err) {
+
+                // 4. Update References for next iteration
+                previousShotJSON = { ...currentShot, image_url: imageUrl };
+                if (i === 0) {
+                    masterAnchorUrl = imageUrl; // Shot 1 is now the master anchor
+                }
+
+            } catch (err: any) {
                 console.error(`Render failed for shot ${i}`, err);
                 setState(prev => ({
                     ...prev,
+                    error: `Shot ${i + 1} failed: ${err.message}`,
                     projects: prev.projects.map(p => p.id === prev.activeProjectId ? {
                         ...p,
                         sequences: p.sequences.map(s => s.id === prev.activeSequenceId ? {
@@ -782,6 +809,9 @@ const MainApp: React.FC = () => {
                         } : s)
                     } : p)
                 }));
+                // Break loop on failure to maintain sequence? 
+                // Or continue? User likes "one by one", so we probably should pause or allow resume.
+                break;
             }
         }
 
@@ -790,7 +820,7 @@ const MainApp: React.FC = () => {
             isGeneratingImages: false,
             projects: prev.projects.map(p => p.id === prev.activeProjectId ? {
                 ...p,
-                sequences: p.sequences.map(s => s.id === prev.activeSequenceId ? { ...s, status: 'storyboarded' } : s)
+                sequences: p.sequences.map(s => s.id === prev.activeSequenceId ? { ...s, status: i === shots.length ? 'storyboarded' : s.status } : s)
             } : p)
         }));
     };
