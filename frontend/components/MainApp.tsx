@@ -722,7 +722,8 @@ const MainApp: React.FC = () => {
         let previousShotJSON: any = null;
         let masterAnchorUrl: string | undefined = undefined;
 
-        for (let i = 0; i < shots.length; i++) {
+        let i = 0;
+        for (i = 0; i < shots.length; i++) {
             let currentShot = shots[i];
 
             // 1. Mark as loading
