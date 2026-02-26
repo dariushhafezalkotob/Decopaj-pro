@@ -736,7 +736,7 @@ const MainApp: React.FC = () => {
                     } : p)
                 }));
 
-                const previousShotUrl = i > 0 ? shots[i - 1].image_url : undefined;
+                const masterShotUrl = i > 0 ? shots[0].image_url : undefined;
 
                 const imageUrl = await generateShotImage(
                     shots[i],
@@ -747,7 +747,7 @@ const MainApp: React.FC = () => {
                     activeProject.id,
                     activeSequence.id,
                     state.aiModel,
-                    previousShotUrl
+                    masterShotUrl
                 );
 
                 setState(prev => ({

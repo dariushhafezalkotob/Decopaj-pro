@@ -752,7 +752,7 @@ export default async function aiRoutes(server: FastifyInstance) {
     });
 
     server.post('/generate-image', async (request: any, reply) => {
-        const { shot, size, assets, projectName, sequenceTitle, projectId, sequenceId, model: requestedModel, previousShotUrl } = request.body;
+        const { shot, size, assets, projectName, sequenceTitle, projectId, sequenceId, model: requestedModel, masterShotUrl } = request.body;
         const ai = getAI();
         const parts: any[] = [];
 
@@ -761,15 +761,15 @@ export default async function aiRoutes(server: FastifyInstance) {
 
         const imageParts: { priority: number, part: any }[] = [];
 
-        // 1. Add Previous Shot Context (Highest Priority)
-        if (previousShotUrl) {
-            const prevRes = await resolveImageResource(previousShotUrl);
-            if (prevRes) {
+        // 1. Add Master Shot Context (Highest Priority)
+        if (masterShotUrl) {
+            const masterRes = await resolveImageResource(masterShotUrl);
+            if (masterRes) {
                 imageParts.push({
                     priority: 100,
                     part: [
-                        { inlineData: { data: prevRes.data, mimeType: prevRes.mimeType } },
-                        { text: `PREVIOUS SHOT REFERENCE: This is the exact frame that immediately precedes the current shot. Maintain visual continuity (characters, outfits, props, lighting) based on this image strictly.` }
+                        { inlineData: { data: masterRes.data, mimeType: masterRes.mimeType } },
+                        { text: `MASTER SHOT REFERENCE: This is the establishing/master shot of the current scene. Maintain visual and spatial continuity (characters, outfits, props, environment layout, lighting) based strictly on this image. You may reframe or change angles, but the world and entities must match this master shot.` }
                     ]
                 });
             }
