@@ -98,7 +98,7 @@ export default async function aiRoutes(server: FastifyInstance) {
     const generateImageSeedream = async (prompt: string, imageConfig?: any, modelPathOverride?: string) => {
         const apiKey = process.env.WAVESPEED_API_KEY;
         // Default to sequential for new generation
-        let modelPath = modelPathOverride || process.env.WAVESPEED_MODEL_PATH || 'bytedance/seedream-v4.5/sequential';
+        let modelPath = modelPathOverride || process.env.WAVESPEED_MODEL_PATH || 'bytedance/seedream-v5.0-lite/edit-sequential';
 
         if (!apiKey) {
             throw new Error("WAVESPEED_API_KEY is not configured.");
@@ -136,7 +136,7 @@ export default async function aiRoutes(server: FastifyInstance) {
             } else if (modelPath.includes('edit') && !payload.images) {
                 if (!imageConfig || !imageConfig.images) {
                     console.warn("WARNING: Using an edit model endpoint for Text-to-Image generation without input images. Switching to 'sequential' model.");
-                    modelPath = 'bytedance/seedream-v4.5/sequential';
+                    modelPath = 'bytedance/seedream-v5.0-lite/edit-sequential';
                 }
             }
         }
@@ -884,7 +884,7 @@ export default async function aiRoutes(server: FastifyInstance) {
 
                         } else {
                             // --- STANDARD SEEDREAM 4.5 GENERATION ---
-                            let modelPath = process.env.WAVESPEED_MODEL_PATH || 'bytedance/seedream-v4.5/sequential';
+                            let modelPath = process.env.WAVESPEED_MODEL_PATH || 'bytedance/seedream-v5.0-lite/edit-sequential';
                             const referenceImages: string[] = [];
                             for (const p of parts) {
                                 if (p.inlineData?.data && p.inlineData.mimeType) {
@@ -894,9 +894,9 @@ export default async function aiRoutes(server: FastifyInstance) {
 
                             if (referenceImages.length > 0) {
                                 console.log(`[JOB ${jobId}] Using 'edit-sequential' with ${referenceImages.length} refs.`);
-                                modelPath = 'bytedance/seedream-v4.5/edit-sequential';
+                                modelPath = 'bytedance/seedream-v5.0-lite/edit-sequential';
                             } else if (modelPath.includes('edit')) {
-                                modelPath = 'bytedance/seedream-v4.5/sequential';
+                                modelPath = 'bytedance/seedream-v5.0-lite/edit-sequential';
                             }
 
                             imageUrl = await generateImageSeedream(fullPrompt, {
@@ -1004,7 +1004,7 @@ export default async function aiRoutes(server: FastifyInstance) {
                         if (requestedModel === 'seedream-4.5') {
                             imageUrl = await generateImageSeedream(`${genPromptText}\nUse this image as reference.`, {
                                 image_url: (base64Data && base64Data.startsWith('http')) ? base64Data : `data:${currentMimeType};base64,${base64Data}`
-                            }, 'bytedance/seedream-v4.5/edit');
+                            }, 'bytedance/seedream-v5.0-lite/edit-sequential');
                         } else if (requestedModel === 'flux-comic') {
                             const fluxModelPath = 'wavespeed-ai/flux-2-klein-9b/edit-lora';
                             const imageConfig = {
