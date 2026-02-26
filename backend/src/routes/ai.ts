@@ -769,7 +769,7 @@ export default async function aiRoutes(server: FastifyInstance) {
                     priority: 100,
                     part: [
                         { inlineData: { data: masterRes.data, mimeType: masterRes.mimeType } },
-                        { text: `MASTER SHOT REFERENCE: This is the establishing/master shot of the current scene. Maintain visual and spatial continuity (characters, outfits, props, environment layout, lighting) based strictly on this image. You may reframe or change angles, but the world and entities must match this master shot.` }
+                        { text: `MASTER SHOT REFERENCE: This is the master layout. The absolute spatial positioning of characters MUST rigidly follow this image. Do not flip positions. Re-frame the camera to match the new Shot Size and Camera Angle, but keep the world identical.` }
                     ]
                 });
             }
@@ -858,18 +858,17 @@ export default async function aiRoutes(server: FastifyInstance) {
 
         parts.push({
             text: `
-      DIRECTORIAL NOTES:
-      ${(shot.visual_breakdown.notes || []).map((n: string) => `- ${n}`).join('\n')}
-
-      MANDATORY CINEMATIC SPECS:
+      DIRECTIVE: Show me a ${shotSize.toUpperCase()} shot.
+      
+      CINEMATIC SPECS:
       - CAMERA ANGLE: EXTREME ${cameraAngle.toUpperCase()}
-      - SHOT SIZE: ${shotSize.toUpperCase()}
       - COMPOSITION: ${shot.visual_breakdown.framing_composition.framing}, ${shot.visual_breakdown.framing_composition.perspective} perspective
       - LENS: ${focalLength}mm (${lensDesc}), Aperture ${shot.visual_breakdown.camera.settings.aperture}
       - DEPTH OF FIELD: ${shot.visual_breakdown.framing_composition.depth} focus
       
       VISUAL CONTEXT:
-      - SCENE: "${shot.action_segment}"
+      - SCENE ACTION: "${shot.action_segment}"
+      - DIRECTORIAL NOTES: ${(shot.visual_breakdown.notes || []).join(' | ')}
       - LIGHTING: ${shot.visual_breakdown.lighting.key}, ${shot.visual_breakdown.lighting.quality}. Style: ${shot.visual_breakdown.lighting.lighting_style || 'standard'}
       - ENVIRONMENT MOOD: ${shot.visual_breakdown.scene.mood}, Palette: ${shot.visual_breakdown.scene.color_palette}
       
