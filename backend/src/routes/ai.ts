@@ -555,6 +555,24 @@ export default async function aiRoutes(server: FastifyInstance) {
                     // Add the original action segment for reference
                     shotJSON.action_segment = plan.action_segment;
 
+                    // Re-number reference images sequentially while preserving the database tag
+                    let seq = 1;
+                    const mapRef = (obj: any) => {
+                        if (obj && obj.reference_image) {
+                            obj.original_ref = obj.reference_image;
+                            obj.reference_image = `image ${seq++}`;
+                        }
+                    };
+                    if (shotJSON.visual_breakdown?.characters) {
+                        shotJSON.visual_breakdown.characters.forEach(mapRef);
+                    }
+                    if (shotJSON.visual_breakdown?.objects) {
+                        shotJSON.visual_breakdown.objects.forEach(mapRef);
+                    }
+                    if (shotJSON.visual_breakdown?.scene?.environment) {
+                        mapRef(shotJSON.visual_breakdown.scene.environment);
+                    }
+
                     finalShots.push(shotJSON);
                     previousShotJSON = shotJSON; // Update for next iteration
                 }
@@ -704,6 +722,24 @@ export default async function aiRoutes(server: FastifyInstance) {
 
                 const result = JSON.parse(response.text || '{}');
 
+                // Re-number reference images sequentially while preserving the database tag
+                let seq = 1;
+                const mapRef = (obj: any) => {
+                    if (obj && obj.reference_image) {
+                        obj.original_ref = obj.reference_image;
+                        obj.reference_image = `image ${seq++}`;
+                    }
+                };
+                if (result.visual_breakdown?.characters) {
+                    result.visual_breakdown.characters.forEach(mapRef);
+                }
+                if (result.visual_breakdown?.objects) {
+                    result.visual_breakdown.objects.forEach(mapRef);
+                }
+                if (result.visual_breakdown?.scene?.environment) {
+                    mapRef(result.visual_breakdown.scene.environment);
+                }
+
                 activeJobs.set(jobId, { status: 'completed', data: result });
                 setTimeout(() => activeJobs.delete(jobId), 3600000);
             } catch (err: any) {
@@ -740,8 +776,8 @@ export default async function aiRoutes(server: FastifyInstance) {
         }
 
         // 2. Add Environment Reference
-        const envRefTag = shot.visual_breakdown.scene.environment.reference_image;
-        const locationAsset = assets.find((a: any) => a.name?.toLowerCase() === shot.visual_breakdown.scene.environment.location_type?.toLowerCase()) || assets.find((a: any) => a.type === 'location' && shot.relevant_entities.includes(a.name)) || assets.find((a: any) => a.refTag === envRefTag);
+        const envRefTag = shot.visual_breakdown.scene.environment.original_ref || shot.visual_breakdown.scene.environment.reference_image;
+        const locationAsset = assets.find((a: any) => a.refTag === envRefTag) || assets.find((a: any) => a.name?.toLowerCase() === shot.visual_breakdown.scene.environment.location_type?.toLowerCase()) || assets.find((a: any) => a.type === 'location' && shot.relevant_entities.includes(a.name));
         const locRes = await resolveImageResource(locationAsset?.imageData);
         if (locRes) {
             imageParts.push({
@@ -755,7 +791,8 @@ export default async function aiRoutes(server: FastifyInstance) {
 
         // 3. Add Character references
         for (const charShot of shot.visual_breakdown.characters) {
-            const asset = assets.find((a: any) => a.name?.toLowerCase() === charShot.name?.toLowerCase()) || assets.find((a: any) => a.refTag === charShot.reference_image);
+            const charRefTag = charShot.original_ref || charShot.reference_image;
+            const asset = assets.find((a: any) => a.refTag === charRefTag) || assets.find((a: any) => a.name?.toLowerCase() === charShot.name?.toLowerCase());
             const charRes = await resolveImageResource(asset?.imageData);
             if (charRes) {
                 imageParts.push({
@@ -777,8 +814,9 @@ export default async function aiRoutes(server: FastifyInstance) {
         // 4. Add Object references (Prioritizing Worn items like Suit/Helmet)
         if (shot.visual_breakdown.objects) {
             for (const obj of shot.visual_breakdown.objects) {
-                if (obj.reference_image) {
-                    const asset = assets.find((a: any) => a.name?.toLowerCase() === obj.name?.toLowerCase()) || assets.find((a: any) => a.refTag === obj.reference_image);
+                const objRefTag = obj.original_ref || obj.reference_image;
+                if (objRefTag) {
+                    const asset = assets.find((a: any) => a.refTag === objRefTag) || assets.find((a: any) => a.name?.toLowerCase() === obj.name?.toLowerCase());
                     const objRes = await resolveImageResource(asset?.imageData);
                     if (objRes) {
                         const isWorn = ["suit", "helmet", "gloves", "outfit", "armor", "clothing"].some(k => obj.name.toLowerCase().includes(k));
