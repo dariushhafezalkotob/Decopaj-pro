@@ -317,8 +317,7 @@ export default async function aiRoutes(server: FastifyInstance) {
         (async () => {
             try {
                 const safeAssets = assets || [];
-                let seqIdx1 = 1;
-                const assetMapText = safeAssets.map((a: any) => `- ${a.name} (${a.type}): USE REF TAG "image ${seqIdx1++}"`).join('\n');
+                const assetMapText = safeAssets.map((a: any) => `- ${a.name} (${a.type}): USE REF TAG "${a.refTag}"`).join('\n');
 
                 // --- STAGE 1: Scene Pre-Analysis (Cast & Props) ---
                 console.log(`[JOB ${jobId}] Stage 1: Scene Pre-Analysis...`);
@@ -556,18 +555,6 @@ export default async function aiRoutes(server: FastifyInstance) {
                     // Add the original action segment for reference
                     shotJSON.action_segment = plan.action_segment;
 
-                    // Enforce cleanly sequential reference images within the JSON payload itself
-                    let seq = 1;
-                    if (shotJSON.visual_breakdown?.characters) {
-                        for (const c of shotJSON.visual_breakdown.characters) { c.reference_image = `image ${seq++}`; }
-                    }
-                    if (shotJSON.visual_breakdown?.objects) {
-                        for (const o of shotJSON.visual_breakdown.objects) { o.reference_image = `image ${seq++}`; }
-                    }
-                    if (shotJSON.visual_breakdown?.scene?.environment) {
-                        shotJSON.visual_breakdown.scene.environment.reference_image = `image ${seq++}`;
-                    }
-
                     finalShots.push(shotJSON);
                     previousShotJSON = shotJSON; // Update for next iteration
                 }
@@ -593,8 +580,7 @@ export default async function aiRoutes(server: FastifyInstance) {
 
         (async () => {
             try {
-                let seqIdx2 = 1;
-                const mappingText = assets.map((a: any) => `- ${a.name} (${a.type}): use "image ${seqIdx2++}"`).join('\n');
+                const mappingText = assets.map((a: any) => `- ${a.name} (${a.type}): use "${a.refTag}"`).join('\n');
 
                 const prompt = `
       You are a professional cinematic director. Analyze the following manual shot description and create a technical cinematic breakdown using the "Director Logic System".
@@ -718,18 +704,6 @@ export default async function aiRoutes(server: FastifyInstance) {
 
                 const result = JSON.parse(response.text || '{}');
 
-                // Enforce cleanly sequential reference images within the JSON payload itself
-                let seq = 1;
-                if (result.visual_breakdown?.characters) {
-                    for (const c of result.visual_breakdown.characters) { c.reference_image = `image ${seq++}`; }
-                }
-                if (result.visual_breakdown?.objects) {
-                    for (const o of result.visual_breakdown.objects) { o.reference_image = `image ${seq++}`; }
-                }
-                if (result.visual_breakdown?.scene?.environment) {
-                    result.visual_breakdown.scene.environment.reference_image = `image ${seq++}`;
-                }
-
                 activeJobs.set(jobId, { status: 'completed', data: result });
                 setTimeout(() => activeJobs.delete(jobId), 3600000);
             } catch (err: any) {
@@ -767,7 +741,7 @@ export default async function aiRoutes(server: FastifyInstance) {
 
         // 2. Add Environment Reference
         const envRefTag = shot.visual_breakdown.scene.environment.reference_image;
-        const locationAsset = assets.find((a: any) => a.name === shot.visual_breakdown.scene.environment.location_type) || assets.find((a: any) => a.type === 'location' && shot.relevant_entities.includes(a.name)) || assets.find((a: any) => a.refTag === envRefTag);
+        const locationAsset = assets.find((a: any) => a.name?.toLowerCase() === shot.visual_breakdown.scene.environment.location_type?.toLowerCase()) || assets.find((a: any) => a.type === 'location' && shot.relevant_entities.includes(a.name)) || assets.find((a: any) => a.refTag === envRefTag);
         const locRes = await resolveImageResource(locationAsset?.imageData);
         if (locRes) {
             imageParts.push({
@@ -781,7 +755,7 @@ export default async function aiRoutes(server: FastifyInstance) {
 
         // 3. Add Character references
         for (const charShot of shot.visual_breakdown.characters) {
-            const asset = assets.find((a: any) => a.name === charShot.name) || assets.find((a: any) => a.refTag === charShot.reference_image);
+            const asset = assets.find((a: any) => a.name?.toLowerCase() === charShot.name?.toLowerCase()) || assets.find((a: any) => a.refTag === charShot.reference_image);
             const charRes = await resolveImageResource(asset?.imageData);
             if (charRes) {
                 imageParts.push({
@@ -804,7 +778,7 @@ export default async function aiRoutes(server: FastifyInstance) {
         if (shot.visual_breakdown.objects) {
             for (const obj of shot.visual_breakdown.objects) {
                 if (obj.reference_image) {
-                    const asset = assets.find((a: any) => a.name === obj.name) || assets.find((a: any) => a.refTag === obj.reference_image);
+                    const asset = assets.find((a: any) => a.name?.toLowerCase() === obj.name?.toLowerCase()) || assets.find((a: any) => a.refTag === obj.reference_image);
                     const objRes = await resolveImageResource(asset?.imageData);
                     if (objRes) {
                         const isWorn = ["suit", "helmet", "gloves", "outfit", "armor", "clothing"].some(k => obj.name.toLowerCase().includes(k));
