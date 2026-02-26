@@ -317,7 +317,8 @@ export default async function aiRoutes(server: FastifyInstance) {
         (async () => {
             try {
                 const safeAssets = assets || [];
-                const assetMapText = safeAssets.map((a: any) => `- ${a.name} (${a.type}): USE REF TAG "${a.refTag}"`).join('\n');
+                let seqIdx1 = 1;
+                const assetMapText = safeAssets.map((a: any) => `- ${a.name} (${a.type}): USE REF TAG "image ${seqIdx1++}"`).join('\n');
 
                 // --- STAGE 1: Scene Pre-Analysis (Cast & Props) ---
                 console.log(`[JOB ${jobId}] Stage 1: Scene Pre-Analysis...`);
@@ -580,7 +581,8 @@ export default async function aiRoutes(server: FastifyInstance) {
 
         (async () => {
             try {
-                const mappingText = assets.map((a: any) => `- ${a.name} (${a.type}): use "${a.refTag}"`).join('\n');
+                let seqIdx2 = 1;
+                const mappingText = assets.map((a: any) => `- ${a.name} (${a.type}): use "image ${seqIdx2++}"`).join('\n');
 
                 const prompt = `
       You are a professional cinematic director. Analyze the following manual shot description and create a technical cinematic breakdown using the "Director Logic System".
@@ -800,8 +802,14 @@ export default async function aiRoutes(server: FastifyInstance) {
         const finalImageParts = imageParts.slice(0, MAX_IMAGES);
 
         // Build final parts array
+        let indexInPrompt = 1;
         for (const set of finalImageParts) {
+            // Replace the original textual ref tag with the exact sequential index for Seedream
+            if (set.part.length > 1 && set.part[1].text) {
+                set.part[1].text = set.part[1].text.replace(/\[.*?\]/, `[image ${indexInPrompt}]`);
+            }
             parts.push(...set.part);
+            indexInPrompt++;
         }
 
         const cameraAngle = (shot.visual_breakdown.framing_composition.camera_angle || 'standard').replace(/_/g, ' ');
