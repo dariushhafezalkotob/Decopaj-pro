@@ -856,9 +856,15 @@ export default async function aiRoutes(server: FastifyInstance) {
             : focalLength >= 85 ? "Telephoto lens with compressed depth"
                 : "Standard cinematic prime lens";
 
+        const charNames = (shot.visual_breakdown.characters || []).map((c: any) => c.name.toUpperCase()).join(' and ');
+        const charPositions = (shot.visual_breakdown.characters || []).map((c: any) => `${c.name.toUpperCase()} is at ${c.position}`).join('. ');
+        const directiveText = charNames
+            ? `show me a ${shotSize} shot of ${charNames}. camera angle is ${cameraAngle}. ${charPositions}.`
+            : `show me a ${shotSize} shot. camera angle is ${cameraAngle}.`;
+
         parts.push({
             text: `
-      DIRECTIVE: Show me a ${shotSize.toUpperCase()} shot.
+      DIRECTIVE: ${directiveText}
       
       CINEMATIC SPECS:
       - CAMERA ANGLE: EXTREME ${cameraAngle.toUpperCase()}
