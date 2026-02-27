@@ -1153,8 +1153,8 @@ export default async function aiRoutes(server: FastifyInstance) {
                             const fluxModelPath = 'wavespeed-ai/flux-2-klein-9b/edit-lora';
                             const fluxConfig = {
                                 images: [geminiDataUri],
-                                width: 2560,
-                                height: 1440,
+                                width: 1280,
+                                height: 720,
                                 loras: [
                                     { path: "https://huggingface.co/dariushh/Klein_Style_V3/resolve/main/comic_klein_style_V1.safetensors", scale: 1.65 },
                                     { path: "dariushh/Comic_lines_style", scale: 0.8 }
@@ -1183,8 +1183,8 @@ export default async function aiRoutes(server: FastifyInstance) {
 
                             imageUrl = await generateImageSeedream(fullPrompt, {
                                 images: referenceImages,
-                                width: 2560,
-                                height: 1440
+                                width: 1280,
+                                height: 720
                             }, modelPath);
                         }
 
@@ -1286,14 +1286,14 @@ export default async function aiRoutes(server: FastifyInstance) {
                         if (requestedModel === 'bytedance/seedream-v5.0-lite/edit-sequential') {
                             imageUrl = await generateImageSeedream(`${genPromptText}\nUse this image as reference.`, {
                                 image_url: (base64Data && base64Data.startsWith('http')) ? base64Data : `data:${currentMimeType};base64,${base64Data}`,
-                                width: 2560,
-                                height: 1440
+                                width: 1280,
+                                height: 720
                             }, 'bytedance/seedream-v5.0-lite/edit-sequential');
                         } else if (requestedModel === 'flux-comic') {
                             const fluxModelPath = 'wavespeed-ai/flux-2-klein-9b/edit-lora';
                             const imageConfig = {
                                 images: [(base64Data && base64Data.startsWith('http')) ? base64Data : `data:${currentMimeType};base64,${base64Data}`],
-                                width: 2560, height: 1440,
+                                width: 1280, height: 720,
                                 loras: [
                                     { path: "https://huggingface.co/dariushh/Klein_Style_V3/resolve/main/comic_klein_style_V1.safetensors", scale: 1.65 },
                                     { path: "dariushh/Comic_lines_style", scale: 0.8 }
