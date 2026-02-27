@@ -1094,7 +1094,7 @@ export default async function aiRoutes(server: FastifyInstance) {
 
         try {
             // ASYNC WRAPPER: Return jobId immediately for Seedream/Flux Comic
-            if (requestedModel === 'seedream-4.5' || requestedModel === 'flux-comic') {
+            if (requestedModel === 'bytedance/seedream-v5.0-lite/edit-sequential' || requestedModel === 'flux-comic') {
                 const jobId = `${requestedModel === 'flux-comic' ? 'comic' : 'gen'}_${Date.now()}_${Math.random().toString(36).substring(7)}`;
                 activeJobs.set(jobId, { status: 'processing' });
 
@@ -1182,7 +1182,7 @@ export default async function aiRoutes(server: FastifyInstance) {
             }
 
             // 2. GEMINI GENERATION (Synchronous - usually < 30s)
-            if (requestedModel !== 'seedream-4.5' && requestedModel !== 'flux-comic') {
+            if (requestedModel !== 'bytedance/seedream-v5.0-lite/edit-sequential' && requestedModel !== 'flux-comic') {
                 console.log(`Calling Gemini (${model}) for shot ${shot.shot_id}...`);
                 const startTime = Date.now();
                 const response = await ai.models.generateContent({
@@ -1221,7 +1221,7 @@ export default async function aiRoutes(server: FastifyInstance) {
 
         if (!imageRes) {
             // Last ditch fallback for Seedream if resolution failed but it's a URL
-            if (requestedModel === 'seedream-4.5' && typeof originalBase64 === 'string' && originalBase64.startsWith('http')) {
+            if (requestedModel === 'bytedance/seedream-v5.0-lite/edit-sequential' && typeof originalBase64 === 'string' && originalBase64.startsWith('http')) {
                 console.log("Resolution failed but passing URL directly to Seedream.");
                 base64Data = originalBase64;
             } else {
@@ -1247,7 +1247,7 @@ export default async function aiRoutes(server: FastifyInstance) {
 
         try {
             // ASYNC WRAPPER for SEEDREAM/FLUX
-            if (requestedModel === 'seedream-4.5' || requestedModel === 'flux-comic') {
+            if (requestedModel === 'bytedance/seedream-v5.0-lite/edit-sequential' || requestedModel === 'flux-comic') {
                 const jobId = `edit_${Date.now()}_${Math.random().toString(36).substring(7)}`;
                 activeJobs.set(jobId, { status: 'processing' });
 
@@ -1258,7 +1258,7 @@ export default async function aiRoutes(server: FastifyInstance) {
 
                         let imageUrl: string | undefined;
 
-                        if (requestedModel === 'seedream-4.5') {
+                        if (requestedModel === 'bytedance/seedream-v5.0-lite/edit-sequential') {
                             imageUrl = await generateImageSeedream(`${genPromptText}\nUse this image as reference.`, {
                                 image_url: (base64Data && base64Data.startsWith('http')) ? base64Data : `data:${currentMimeType};base64,${base64Data}`
                             }, 'bytedance/seedream-v5.0-lite/edit-sequential');

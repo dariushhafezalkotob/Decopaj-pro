@@ -964,10 +964,10 @@ const MainApp: React.FC = () => {
                                 High-End
                             </button>
                             <button
-                                onClick={() => setState(p => ({ ...p, aiModel: 'seedream-4.5' }))}
-                                className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest transition-all ${state.aiModel === 'seedream-4.5' ? 'bg-emerald-500 text-zinc-950 shadow-lg shadow-emerald-500/20' : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800'}`}
+                                onClick={() => setState(p => ({ ...p, aiModel: 'bytedance/seedream-v5.0-lite/edit-sequential' }))}
+                                className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest transition-all ${state.aiModel === 'bytedance/seedream-v5.0-lite/edit-sequential' ? 'bg-emerald-500 text-zinc-950 shadow-lg shadow-emerald-500/20' : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800'}`}
                             >
-                                Production
+                                Seedream V5
                             </button>
                             <button
                                 onClick={() => setState(p => ({ ...p, aiModel: 'flux-comic' }))}

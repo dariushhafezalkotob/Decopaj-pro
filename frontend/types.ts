@@ -102,7 +102,7 @@ export interface EntityIdentificationResponse {
 }
 
 export type ImageSize = "1K" | "2K" | "4K";
-export type AIModel = "gemini-high" | "seedream-4.5" | "flux-comic";
+export type AIModel = "gemini-high" | "bytedance/seedream-v5.0-lite/edit-sequential" | "flux-comic";
 
 export interface AppState {
     projects: Project[];
