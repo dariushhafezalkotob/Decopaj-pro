@@ -1158,8 +1158,8 @@ export default async function aiRoutes(server: FastifyInstance) {
 
                             imageUrl = await generateImageSeedream(fullPrompt, {
                                 images: referenceImages,
-                                width: 1344,
-                                height: 768
+                                width: 2560,
+                                height: 1440
                             }, modelPath);
                         }
 
