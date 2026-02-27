@@ -82,6 +82,8 @@ export interface Sequence {
     assets: Entity[]; // Sequence-specific (locations/items)
     status: 'draft' | 'analyzed' | 'storyboarded';
     continuityIssues?: ContinuityIssue[];
+    sceneContext?: any;
+    shotPlan?: any[];
 }
 
 export interface Project {

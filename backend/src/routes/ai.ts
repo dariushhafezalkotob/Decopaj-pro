@@ -410,21 +410,16 @@ export default async function aiRoutes(server: FastifyInstance) {
 
                 const plannedShots = JSON.parse(stage2Response.text || '{}').shot_plan;
 
-                // --- STAGE 3: Sequential Stateful Synthesis (The Continuity Loop) ---
-                console.log(`[JOB ${jobId}] Stage 3: Stateful Synthesis (${plannedShots.length} shots)...`);
-
                 const finalShots: any[] = [];
-                let previousShotJSON: any = null;
-
-                for (const plan of plannedShots) {
-                    console.log(`[JOB ${jobId}] Generating Shot ${plan.index}...`);
-                    activeJobs.set(jobId, {
-                        status: 'processing',
-                        progress: `Stage 3: Synthesizing Shot ${plan.index}/${plannedShots.length}...`
-                    });
+                // ONLY GENERATE THE FIRST SHOT JSON IN THIS ENDPOINT (Sequential Flow)
+                const firstPlan = plannedShots[0];
+                if (firstPlan) {
+                    console.log(`[JOB ${jobId}] Generating First Shot (Master) JSON...`);
+                    activeJobs.set(jobId, { status: 'processing', progress: 'Generating Master Shot JSON...' });
 
                     const stage3Prompt = `Role: Technical Director.
-      Generate a technical JSON for Shot ${plan.index} of this sequence.
+      Generate a technical JSON for the MASTER SHOT (Shot ${firstPlan.index}) of this sequence.
+      This shot will serve as the spatial anchor for all subsequent shots in the scene.
       
       MANDATORY PRODUCTION ASSETS (Mapping table):
       ${assetMapText}
@@ -432,28 +427,22 @@ export default async function aiRoutes(server: FastifyInstance) {
       SCENE CONTEXT (Characters & Environment):
       ${JSON.stringify(sceneContext)}
 
-      SHOT SUMMARY: "${plan.summary}"
-      ACTION SEGMENT: "${plan.action_segment}"
-
-      PREVIOUS SHOT STATE (CONTINUITY):
-      ${previousShotJSON ? JSON.stringify(previousShotJSON) : "This is the first shot."}
+      SHOT SUMMARY: "${firstPlan.summary}"
+      ACTION SEGMENT: "${firstPlan.action_segment}"
 
       DIRECTOR LOGIC SYSTEM:
       - Angles: "low_angle", "worms_eye", "top_down", "dutch_tilt", "eye_level", "over_the_shoulder", "profile", "reflection", "silhouette", "one_point_perspective"
       - Sizes: "wide", "long", "medium", "medium_close_up", "close_up", "extreme_close_up", "full_body"
       
       STRICT CONTINUITY RULES:
-      1. Characters MUST maintain the same appearance, outfits, and items from the PREVIOUS SHOT unless this segment explicitly describes a change.
-      2. If a character had a helmet/hat/item in the previous shot, they MUST still have it here by default.
-      3. Use the "notes" field to track state (e.g., "Maintains helmet from shot 1").
-      4. Use provided ref tags (e.g., image 1) from asset map.
-      5. MIRRORING RULE: Any clothing, armor, or accessory with a reference image (e.g., image 9) that a character is wearing MUST also be listed in the 'objects' array for this shot. This ensures the visual reference is applied correctly by the image generator.
+      1. This is the FIRST shot. Use the "notes" field to set initial states.
+      2. Use provided ref tags (e.g., image 1) from asset map.
+      3. MIRRORING RULE: Any clothing, armor, or accessory with a reference image (e.g., image 9) that a character is wearing MUST also be listed in the 'objects' array for this shot. 
 
-      6. DIALOGUE & INTERACTION LOGIC (STRICT ISOLATION):
-         - DIALOGUE IS VISUALLY INVISIBLE: Dialogue text (words characters say) is physically invisible. You MUST NOT add any nouns or items mentioned inside dialogue to the 'objects' array or 'relevant_entities'. (Example: If someone says "Suck a screw," do NOT add a screw to the scene).
-         - DIALOGUE IS EMOTIONALLY MANDATORY: Dialogue is your PRIMARY source for character emotion. Use the subtext of the words to determine the character's 'expression', 'lighting_effect', and 'body language'. 
-         - SPATIAL RELATIONS: Use dialogue flow to determine 'position' and 'eyeline'. Who is talking? Who is listening? Position characters so they are LOOKING at each other during the conversation.
-         - SUMMARY: Dialogue = 0% Physical Props, 100% Emotional & Relational Context.
+      4. DIALOGUE & INTERACTION LOGIC:
+         - DIALOGUE IS VISUALLY INVISIBLE.
+         - DIALOGUE IS EMOTIONALLY MANDATORY.
+         - SPATIAL RELATIONS: Position characters so they are LOOKING at each other during conversation.
 `;
 
                     const shotResponse = await ai.models.generateContent({
@@ -552,10 +541,9 @@ export default async function aiRoutes(server: FastifyInstance) {
                     });
 
                     const shotJSON = JSON.parse(shotResponse.text || '{}');
-                    // Add the original action segment for reference
-                    shotJSON.action_segment = plan.action_segment;
+                    shotJSON.action_segment = firstPlan.action_segment;
 
-                    // Re-number reference images sequentially while preserving the database tag
+                    // Re-number reference images sequentially
                     let seq = 1;
                     const mapRef = (obj: any) => {
                         if (obj && obj.reference_image) {
@@ -563,25 +551,185 @@ export default async function aiRoutes(server: FastifyInstance) {
                             obj.reference_image = `image ${seq++}`;
                         }
                     };
-                    if (shotJSON.visual_breakdown?.characters) {
-                        shotJSON.visual_breakdown.characters.forEach(mapRef);
-                    }
-                    if (shotJSON.visual_breakdown?.objects) {
-                        shotJSON.visual_breakdown.objects.forEach(mapRef);
-                    }
-                    if (shotJSON.visual_breakdown?.scene?.environment) {
-                        mapRef(shotJSON.visual_breakdown.scene.environment);
-                    }
+                    if (shotJSON.visual_breakdown?.characters) shotJSON.visual_breakdown.characters.forEach(mapRef);
+                    if (shotJSON.visual_breakdown?.objects) shotJSON.visual_breakdown.objects.forEach(mapRef);
+                    if (shotJSON.visual_breakdown?.scene?.environment) mapRef(shotJSON.visual_breakdown.scene.environment);
 
                     finalShots.push(shotJSON);
-                    previousShotJSON = shotJSON; // Update for next iteration
                 }
 
-                activeJobs.set(jobId, { status: 'completed', data: { shots: finalShots } });
-                console.log(`[JOB ${jobId}] Entire sequence generated successfully!`);
+                activeJobs.set(jobId, { status: 'completed', data: { shots: finalShots, scene_context: sceneContext, shot_plan: plannedShots } });
+                console.log(`[JOB ${jobId}] Analysis complete. Returned 1 master shot and full plan.`);
                 setTimeout(() => activeJobs.delete(jobId), 3600000);
             } catch (err: any) {
                 console.error(`[ANALYSIS JOB ${jobId}] Failed:`, err.message);
+                activeJobs.set(jobId, { status: 'failed', error: err.message });
+            }
+        })();
+
+        return { jobId };
+    });
+
+    server.post('/analyze-next-shot', async (request: any, reply) => {
+        const { sceneContext, plannedShot, previousShotJSON, assets, masterShotUrl, previousShotUrl } = request.body;
+        const ai = getAI();
+        const jobId = `analysis_shot_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+
+        activeJobs.set(jobId, { status: 'processing' });
+
+        (async () => {
+            try {
+                const safeAssets = assets || [];
+                const assetMapText = safeAssets.map((a: any) => `- ${a.name} (${a.type}): USE REF TAG "${a.refTag}"`).join('\n');
+
+                console.log(`[JOB ${jobId}] Generating JSON for Shot ${plannedShot.index}...`);
+
+                const prompt = `Role: Technical Director.
+      Generate a technical JSON for Shot ${plannedShot.index} of this sequence.
+      
+      MANDATORY PRODUCTION ASSETS:
+      ${assetMapText}
+      
+      SCENE CONTEXT:
+      ${JSON.stringify(sceneContext)}
+
+      SHOT SUMMARY: "${plannedShot.summary}"
+      ACTION SEGMENT: "${plannedShot.action_segment}"
+
+      PREVIOUS SHOT STATE (CONTINUITY):
+      ${previousShotJSON ? JSON.stringify(previousShotJSON) : "N/A"}
+
+      VISUAL ANCHORS (IMPORTANT):
+      - Master Shot Reference: ${masterShotUrl || 'N/A'}
+      - Previous Shot Reference: ${previousShotUrl || 'N/A'}
+      
+      DIRECTOR LOGIC SYSTEM:
+      - Angles: "low_angle", "worms_eye", "top_down", "dutch_tilt", "eye_level", "over_the_shoulder", "profile", "reflection", "silhouette", "one_point_perspective"
+      - Sizes: "wide", "long", "medium", "medium_close_up", "close_up", "extreme_close_up", "full_body"
+      
+      STRICT CONTINUITY RULES:
+      1. Use the provided VISUAL ANCHORS to maintain perfect spatial and character continuity.
+      2. image1 is ALWAYS the Master Shot reference. Use it for layout.
+      3. image2 is the Previous Shot reference if available.
+      4. Characters MUST maintain appearance from previous shots.
+      5. Any worn item (helmet, etc.) from previous shots must remain unless explicitly removed.
+
+      DIALOUGE RULES: Physical invisible, emotional mandatory.
+`;
+
+                const shotResponse = await ai.models.generateContent({
+                    model: 'gemini-3-pro-preview',
+                    contents: prompt,
+                    config: {
+                        responseMimeType: "application/json",
+                        responseSchema: {
+                            type: Type.OBJECT,
+                            properties: {
+                                shot_id: { type: Type.STRING },
+                                plan_type: { type: Type.STRING },
+                                camera_specs: { type: Type.STRING },
+                                relevant_entities: { type: Type.ARRAY, items: { type: Type.STRING } },
+                                visual_breakdown: {
+                                    type: Type.OBJECT,
+                                    properties: {
+                                        scene: {
+                                            type: Type.OBJECT,
+                                            properties: {
+                                                environment: { type: Type.OBJECT, properties: { location_type: { type: Type.STRING }, description: { type: Type.STRING }, reference_image: { type: Type.STRING } }, required: ["location_type", "description"] },
+                                                time: { type: Type.STRING },
+                                                mood: { type: Type.STRING },
+                                                color_palette: { type: Type.STRING }
+                                            },
+                                            required: ["environment", "time", "mood", "color_palette"]
+                                        },
+                                        characters: {
+                                            type: Type.ARRAY,
+                                            items: {
+                                                type: Type.OBJECT,
+                                                properties: {
+                                                    name: { type: Type.STRING },
+                                                    reference_image: { type: Type.STRING },
+                                                    position: { type: Type.STRING },
+                                                    appearance: { type: Type.OBJECT, properties: { description: { type: Type.STRING }, expression: { type: Type.STRING } }, required: ["description", "expression"] },
+                                                    actions: { type: Type.STRING },
+                                                    lighting_effect: { type: Type.STRING }
+                                                },
+                                                required: ["name", "reference_image", "position", "appearance", "actions", "lighting_effect"]
+                                            }
+                                        },
+                                        objects: {
+                                            type: Type.ARRAY,
+                                            items: {
+                                                type: Type.OBJECT,
+                                                properties: {
+                                                    name: { type: Type.STRING },
+                                                    reference_image: { type: Type.STRING },
+                                                    details: { type: Type.STRING },
+                                                    action: { type: Type.STRING }
+                                                },
+                                                required: ["name", "details"]
+                                            }
+                                        },
+                                        framing_composition: {
+                                            type: Type.OBJECT,
+                                            properties: {
+                                                shot_type: { type: Type.STRING },
+                                                framing: { type: Type.STRING },
+                                                perspective: { type: Type.STRING },
+                                                camera_angle: { type: Type.STRING },
+                                                shot_size: { type: Type.STRING },
+                                                depth: { type: Type.STRING },
+                                                focus: { type: Type.STRING },
+                                                scale_emphasis: { type: Type.STRING }
+                                            },
+                                            required: ["shot_type", "framing", "perspective"]
+                                        },
+                                        camera: {
+                                            type: Type.OBJECT,
+                                            properties: {
+                                                lens: { type: Type.OBJECT, properties: { focal_length_mm: { type: Type.NUMBER }, type: { type: Type.STRING } }, required: ["focal_length_mm", "type"] },
+                                                settings: { type: Type.OBJECT, properties: { aperture: { type: Type.STRING }, focus: { type: Type.STRING } }, required: ["aperture", "focus"] }
+                                            },
+                                            required: ["lens", "settings"]
+                                        },
+                                        lighting: {
+                                            type: Type.OBJECT,
+                                            properties: {
+                                                key: { type: Type.STRING },
+                                                quality: { type: Type.STRING },
+                                                color_contrast: { type: Type.STRING },
+                                                lighting_style: { type: Type.STRING }
+                                            },
+                                            required: ["key", "quality", "color_contrast"]
+                                        },
+                                        notes: { type: Type.ARRAY, items: { type: Type.STRING } }
+                                    },
+                                    required: ["scene", "characters", "camera", "lighting", "framing_composition"]
+                                }
+                            },
+                            required: ["shot_id", "plan_type", "visual_breakdown", "relevant_entities"]
+                        }
+                    }
+                });
+
+                const result = JSON.parse(shotResponse.text || '{}');
+                result.action_segment = plannedShot.action_segment;
+
+                // Re-number reference images sequentially
+                let seq = 1;
+                const mapRef = (obj: any) => {
+                    if (obj && obj.reference_image) {
+                        obj.original_ref = obj.reference_image;
+                        obj.reference_image = `image ${seq++}`;
+                    }
+                };
+                if (result.visual_breakdown?.characters) result.visual_breakdown.characters.forEach(mapRef);
+                if (result.visual_breakdown?.objects) result.visual_breakdown.objects.forEach(mapRef);
+                if (result.visual_breakdown?.scene?.environment) mapRef(result.visual_breakdown.scene.environment);
+
+                activeJobs.set(jobId, { status: 'completed', data: result });
+                setTimeout(() => activeJobs.delete(jobId), 3600000);
+            } catch (err: any) {
                 activeJobs.set(jobId, { status: 'failed', error: err.message });
             }
         })();

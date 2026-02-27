@@ -131,6 +131,24 @@ export const analyzeCustomShotProxy = async (description: string, assets: any[])
     return await pollJobStatus(jobId);
 };
 
+export const analyzeNextShotProxy = async (
+    sceneContext: any,
+    plannedShot: any,
+    previousShotJSON: any,
+    assets: any[],
+    masterShotUrl?: string,
+    previousShotUrl?: string
+) => {
+    const res = await fetch(`${API_URL}/ai/analyze-next-shot`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({ sceneContext, plannedShot, previousShotJSON, assets, masterShotUrl, previousShotUrl })
+    });
+    if (!res.ok) throw new Error("Shot Analysis Failed");
+    const { jobId } = await res.json();
+    return await pollJobStatus(jobId);
+};
+
 // Polling helper for async jobs
 export const pollJobStatus = async (jobId: string, onProgress?: (progress: string) => void): Promise<any> => {
     const maxAttempts = 100; // 100 * 3s = 300s (5 minutes)
