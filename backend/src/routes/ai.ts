@@ -23,6 +23,13 @@ export default async function aiRoutes(server: FastifyInstance) {
         error?: string
     }>();
 
+    const sanitizeMimeType = (mime: string) => {
+        if (!mime || mime === 'binary/octet-stream' || !mime.includes('/') || mime.startsWith('application/')) {
+            return 'image/png'; // Default to png for Gemini compatibility
+        }
+        return mime;
+    };
+
     const resolveImageResource = async (input: string) => {
         if (!input) return null;
 
@@ -38,7 +45,7 @@ export default async function aiRoutes(server: FastifyInstance) {
                 console.log(`Media found in DB!`);
                 return {
                     data: media.data,
-                    mimeType: media.mimeType || mimeType
+                    mimeType: sanitizeMimeType(media.mimeType || mimeType)
                 };
             }
             console.warn(`Media NOT found in DB: ${mediaId}`);
@@ -56,7 +63,7 @@ export default async function aiRoutes(server: FastifyInstance) {
                 console.log(`File found! Reading...`);
                 return {
                     data: fs.readFileSync(filePath).toString('base64'),
-                    mimeType
+                    mimeType: sanitizeMimeType(mimeType)
                 };
             }
             console.warn(`Local file NOT found: ${filePath}. cwd is ${process.cwd()}`);
@@ -73,7 +80,7 @@ export default async function aiRoutes(server: FastifyInstance) {
                 const contentType = response.headers.get('content-type') || mimeType;
                 return {
                     data: Buffer.from(buffer).toString('base64'),
-                    mimeType: contentType
+                    mimeType: sanitizeMimeType(contentType)
                 };
             } catch (err: any) {
                 console.warn(`Failed to fetch external image (${input}):`, err.message);
@@ -86,13 +93,13 @@ export default async function aiRoutes(server: FastifyInstance) {
             console.log(`Detected Data URL`);
             return {
                 data: input.split('base64,')[1],
-                mimeType: input.split(';')[0].split(':')[1] || mimeType
+                mimeType: sanitizeMimeType(input.split(';')[0].split(':')[1] || mimeType)
             };
         }
 
         // Assume raw base64
         console.log(`Assuming raw base64 data`);
-        return { data: input, mimeType };
+        return { data: input, mimeType: sanitizeMimeType(mimeType) };
     };
 
     const generateImageSeedream = async (prompt: string, imageConfig?: any, modelPathOverride?: string) => {
@@ -432,9 +439,20 @@ export default async function aiRoutes(server: FastifyInstance) {
          - SPATIAL RELATIONS: Position characters so they are LOOKING at each other during conversation.
 `;
 
+                    const stage3Parts: any[] = [
+                        { text: stage3Prompt }
+                    ];
+
+                    for (const asset of safeAssets) {
+                        const res = await resolveImageResource(asset.imageData);
+                        if (res) {
+                            stage3Parts.push({ inlineData: { data: res.data, mimeType: res.mimeType } });
+                        }
+                    }
+
                     const shotResponse = await ai.models.generateContent({
                         model: 'gemini-3-pro-preview',
-                        contents: stage3Prompt,
+                        contents: { parts: stage3Parts },
                         config: {
                             responseMimeType: "application/json",
                             responseSchema: {
