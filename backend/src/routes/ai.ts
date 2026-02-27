@@ -606,9 +606,29 @@ export default async function aiRoutes(server: FastifyInstance) {
       DIALOGUE RULES: Physically invisible, emotionally mandatory.
 `;
 
+                const promptParts: any[] = [
+                    { text: prompt }
+                ];
+
+                if (masterShotUrl) {
+                    const masterRes = await resolveImageResource(masterShotUrl);
+                    if (masterRes) {
+                        promptParts.push({ inlineData: { data: masterRes.data, mimeType: masterRes.mimeType } });
+                        console.log(`[JOB ${jobId}] Attached MASTER_LAYOUT to analysis prompt.`);
+                    }
+                }
+
+                if (previousShotUrl) {
+                    const prevRes = await resolveImageResource(previousShotUrl);
+                    if (prevRes) {
+                        promptParts.push({ inlineData: { data: prevRes.data, mimeType: prevRes.mimeType } });
+                        console.log(`[JOB ${jobId}] Attached PREVIOUS_STATE to analysis prompt.`);
+                    }
+                }
+
                 const shotResponse = await ai.models.generateContent({
                     model: 'gemini-3-pro-preview',
-                    contents: prompt,
+                    contents: { parts: promptParts },
                     config: {
                         responseMimeType: "application/json",
                         responseSchema: {
