@@ -786,6 +786,7 @@ const MainApp: React.FC = () => {
                 }));
 
                 const masterShotUrl = i > 0 ? currentShots[0].image_url : undefined;
+                const previousShotUrl = i > 0 ? currentShots[i - 1]?.image_url : undefined;
 
                 const imageUrl = await generateShotImage(
                     currentShots[i],
@@ -796,7 +797,8 @@ const MainApp: React.FC = () => {
                     activeProject.id,
                     activeSequence.id,
                     state.aiModel,
-                    masterShotUrl
+                    masterShotUrl,
+                    previousShotUrl
                 );
 
                 currentShots[i].image_url = imageUrl;

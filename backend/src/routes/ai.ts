@@ -580,7 +580,9 @@ export default async function aiRoutes(server: FastifyInstance) {
         (async () => {
             try {
                 const safeAssets = assets || [];
-                const assetMapText = safeAssets.map((a: any) => `- ${a.name} (${a.type}): USE REF TAG "${a.refTag}"`).join('\n');
+                // Re-map assets to A1, A2... for this prompt to avoid confusingGemini with high image N numbers
+                const normalizedAssets = safeAssets.map((a: any, i: number) => ({ ...a, promptTag: `A${i + 1}` }));
+                const assetMapText = normalizedAssets.map((a: any) => `- ${a.name} (${a.type}): USE REF TAG "${a.promptTag}"`).join('\n');
 
                 console.log(`[JOB ${jobId}] Generating JSON for Shot ${plannedShot.index}...`);
 
@@ -600,8 +602,8 @@ export default async function aiRoutes(server: FastifyInstance) {
       ${previousShotJSON ? JSON.stringify(previousShotJSON) : "N/A"}
 
       VISUAL ANCHORS (IMPORTANT):
-      - Master Shot Reference: ${masterShotUrl || 'N/A'}
-      - Previous Shot Reference: ${previousShotUrl || 'N/A'}
+      - MASTER_LAYOUT: use tag "REF_MASTER". (Source: ${masterShotUrl || 'N/A'})
+      - PREVIOUS_STATE: use tag "REF_PREVIOUS". (Source: ${previousShotUrl || 'N/A'})
       
       DIRECTOR LOGIC SYSTEM:
       - Angles: "low_angle", "worms_eye", "top_down", "dutch_tilt", "eye_level", "over_the_shoulder", "profile", "reflection", "silhouette", "one_point_perspective"
@@ -609,12 +611,12 @@ export default async function aiRoutes(server: FastifyInstance) {
       
       STRICT CONTINUITY RULES:
       1. Use the provided VISUAL ANCHORS to maintain perfect spatial and character continuity.
-      2. image1 is ALWAYS the Master Shot reference. Use it for layout.
-      3. image2 is the Previous Shot reference if available.
-      4. Characters MUST maintain appearance from previous shots.
-      5. Any worn item (helmet, etc.) from previous shots must remain unless explicitly removed.
+      2. "REF_MASTER" is the spatial anchor. Use it for character positioning.
+      3. "REF_PREVIOUS" provides current emotional/clothing state.
+      4. For characters/objects from the PRODUCTION ASSETS list, use their specific "A1", "A2" tags.
+      5. Characters MUST maintain appearance from previous shots.
 
-      DIALOUGE RULES: Physical invisible, emotional mandatory.
+      DIALOGUE RULES: Physically invisible, emotionally mandatory.
 `;
 
                 const shotResponse = await ai.models.generateContent({
@@ -715,21 +717,34 @@ export default async function aiRoutes(server: FastifyInstance) {
                 const result = JSON.parse(shotResponse.text || '{}');
                 result.action_segment = plannedShot.action_segment;
 
-                // Re-number reference images sequentially
-                let seq = 1;
-                const mapRef = (obj: any) => {
-                    if (obj && obj.reference_image) {
-                        obj.original_ref = obj.reference_image;
-                        obj.reference_image = `image ${seq++}`;
+                // Re-map Gemini tags back to original asset refs or anchor types
+                const mapRefBack = (obj: any) => {
+                    const tag = obj?.reference_image;
+                    if (!tag) return;
+
+                    if (tag === 'REF_MASTER') {
+                        obj.original_ref = 'REF_MASTER';
+                        obj.reference_image = 'image 1'; // For internal frontend UI consistency if needed
+                    } else if (tag === 'REF_PREVIOUS') {
+                        obj.original_ref = 'REF_PREVIOUS';
+                        obj.reference_image = 'image 2';
+                    } else if (tag.startsWith('A')) {
+                        const idx = parseInt(tag.substring(1)) - 1;
+                        if (normalizedAssets[idx]) {
+                            obj.original_ref = normalizedAssets[idx].refTag; // The original image N
+                            obj.reference_image = normalizedAssets[idx].refTag;
+                        }
                     }
                 };
-                if (result.visual_breakdown?.characters) result.visual_breakdown.characters.forEach(mapRef);
-                if (result.visual_breakdown?.objects) result.visual_breakdown.objects.forEach(mapRef);
-                if (result.visual_breakdown?.scene?.environment) mapRef(result.visual_breakdown.scene.environment);
+
+                if (result.visual_breakdown?.characters) result.visual_breakdown.characters.forEach(mapRefBack);
+                if (result.visual_breakdown?.objects) result.visual_breakdown.objects.forEach(mapRefBack);
+                if (result.visual_breakdown?.scene?.environment) mapRefBack(result.visual_breakdown.scene.environment);
 
                 activeJobs.set(jobId, { status: 'completed', data: result });
                 setTimeout(() => activeJobs.delete(jobId), 3600000);
             } catch (err: any) {
+                console.error(`[ANALYSIS SHOT JOB ${jobId}] Failed:`, err.message);
                 activeJobs.set(jobId, { status: 'failed', error: err.message });
             }
         })();
@@ -900,14 +915,14 @@ export default async function aiRoutes(server: FastifyInstance) {
     });
 
     server.post('/generate-image', async (request: any, reply) => {
-        const { shot, size, assets, projectName, sequenceTitle, projectId, sequenceId, model: requestedModel, masterShotUrl } = request.body;
+        const { shot, size, assets, projectName, sequenceTitle, projectId, sequenceId, model: requestedModel, masterShotUrl, previousShotUrl } = request.body;
         const ai = getAI();
         const parts: any[] = [];
 
         // High resolution model selection
         const model = 'gemini-3-pro-image-preview';
 
-        const imageParts: { priority: number, part: any }[] = [];
+        const imageParts: { priority: number, tag: string, part: any }[] = [];
 
         // 1. Add Master Shot Context (Highest Priority)
         if (masterShotUrl) {
@@ -915,40 +930,62 @@ export default async function aiRoutes(server: FastifyInstance) {
             if (masterRes) {
                 imageParts.push({
                     priority: 100,
+                    tag: 'REF_MASTER',
                     part: [
                         { inlineData: { data: masterRes.data, mimeType: masterRes.mimeType } },
-                        { text: `MASTER SHOT REFERENCE: This is the master layout. The absolute spatial positioning of characters MUST rigidly follow this image. Do not flip positions. Re-frame the camera to match the new Shot Size and Camera Angle, but keep the world identical.` }
+                        { text: `MASTER SHOT REFERENCE [REF_MASTER]: This is the master layout. The absolute spatial positioning of characters MUST rigidly follow this image. Do not flip positions. Re-frame the camera to match the new Shot Size and Camera Angle, but keep the world identical.` }
                     ]
                 });
             }
         }
 
-        // 2. Add Environment Reference
-        const envRefTag = shot.visual_breakdown.scene.environment.original_ref || shot.visual_breakdown.scene.environment.reference_image;
-        const locationAsset = assets.find((a: any) => a.refTag === envRefTag) || assets.find((a: any) => a.name?.toLowerCase() === shot.visual_breakdown.scene.environment.location_type?.toLowerCase()) || assets.find((a: any) => a.type === 'location' && shot.relevant_entities.includes(a.name));
-        const locRes = await resolveImageResource(locationAsset?.imageData);
-        if (locRes) {
-            imageParts.push({
-                priority: 80,
-                part: [
-                    { inlineData: { data: locRes.data, mimeType: locRes.mimeType } },
-                    { text: `ENVIRONMENT REFERENCE [${locationAsset.refTag}]: ${locationAsset.name}. ${locationAsset.description}` }
-                ]
-            });
+        // 2. Add Previous Shot Context (High Priority)
+        if (previousShotUrl) {
+            const prevRes = await resolveImageResource(previousShotUrl);
+            if (prevRes) {
+                imageParts.push({
+                    priority: 98,
+                    tag: 'REF_PREVIOUS',
+                    part: [
+                        { inlineData: { data: prevRes.data, mimeType: prevRes.mimeType } },
+                        { text: `PREVIOUS SHOT REFERENCE [REF_PREVIOUS]: This shows the immediately preceding moment. Maintain clothing, item states, and fine character details (e.g., blood, sweat, items held) from this image.` }
+                    ]
+                });
+            }
         }
 
-        // 3. Add Character references
+        // 3. Add Environment Reference
+        const envRefTag = shot.visual_breakdown.scene.environment.original_ref || shot.visual_breakdown.scene.environment.reference_image;
+        if (envRefTag !== 'REF_MASTER' && envRefTag !== 'REF_PREVIOUS') {
+            const locationAsset = assets.find((a: any) => a.refTag === envRefTag) || assets.find((a: any) => a.name?.toLowerCase() === shot.visual_breakdown.scene.environment.location_type?.toLowerCase());
+            const locRes = await resolveImageResource(locationAsset?.imageData);
+            if (locRes) {
+                imageParts.push({
+                    priority: 80,
+                    tag: envRefTag,
+                    part: [
+                        { inlineData: { data: locRes.data, mimeType: locRes.mimeType } },
+                        { text: `ENVIRONMENT REFERENCE [${envRefTag}]: ${locationAsset.name}. ${locationAsset.description}` }
+                    ]
+                });
+            }
+        }
+
+        // 4. Add Character references
         for (const charShot of shot.visual_breakdown.characters) {
             const charRefTag = charShot.original_ref || charShot.reference_image;
+            if (charRefTag === 'REF_MASTER' || charRefTag === 'REF_PREVIOUS') continue;
+
             const asset = assets.find((a: any) => a.refTag === charRefTag) || assets.find((a: any) => a.name?.toLowerCase() === charShot.name?.toLowerCase());
             const charRes = await resolveImageResource(asset?.imageData);
             if (charRes) {
                 imageParts.push({
                     priority: 95,
+                    tag: charRefTag,
                     part: [
                         { inlineData: { data: charRes.data, mimeType: charRes.mimeType } },
                         {
-                            text: `CHARACTER IDENTITY [${charShot.reference_image}]: "${charShot.name}".
+                            text: `CHARACTER IDENTITY [${charRefTag}]: "${charShot.name}".
         MANDATORY FACIAL FEATURES: Use this reference image.
         FRAME POSITION: ${charShot.position}
         EXPRESSION: ${charShot.appearance.expression}
@@ -959,43 +996,65 @@ export default async function aiRoutes(server: FastifyInstance) {
             }
         }
 
-        // 4. Add Object references (Prioritizing Worn items like Suit/Helmet)
+        // 5. Add Object references (Prioritizing Worn items like Suit/Helmet)
         if (shot.visual_breakdown.objects) {
             for (const obj of shot.visual_breakdown.objects) {
                 const objRefTag = obj.original_ref || obj.reference_image;
-                if (objRefTag) {
-                    const asset = assets.find((a: any) => a.refTag === objRefTag) || assets.find((a: any) => a.name?.toLowerCase() === obj.name?.toLowerCase());
-                    const objRes = await resolveImageResource(asset?.imageData);
-                    if (objRes) {
-                        const isWorn = ["suit", "helmet", "gloves", "outfit", "armor", "clothing"].some(k => obj.name.toLowerCase().includes(k));
-                        imageParts.push({
-                            priority: isWorn ? 90 : 60,
-                            part: [
-                                { inlineData: { data: objRes.data, mimeType: objRes.mimeType } },
-                                { text: `OBJECT REFERENCE [${obj.reference_image}]: "${obj.name}". Details: ${obj.details}` }
-                            ]
-                        });
-                    }
+                if (!objRefTag || objRefTag === 'REF_MASTER' || objRefTag === 'REF_PREVIOUS') continue;
+
+                const asset = assets.find((a: any) => a.refTag === objRefTag) || assets.find((a: any) => a.name?.toLowerCase() === obj.name?.toLowerCase());
+                const objRes = await resolveImageResource(asset?.imageData);
+                if (objRes) {
+                    const isWorn = ["suit", "helmet", "gloves", "outfit", "armor", "clothing"].some(k => obj.name.toLowerCase().includes(k));
+                    imageParts.push({
+                        priority: isWorn ? 90 : 60,
+                        tag: objRefTag,
+                        part: [
+                            { inlineData: { data: objRes.data, mimeType: objRes.mimeType } },
+                            { text: `OBJECT REFERENCE [${objRefTag}]: "${obj.name}". Details: ${obj.details}` }
+                        ]
+                    });
                 }
             }
         }
 
-        // --- REFERENCE LIMITER & MERGER ---
-        // Gemini-3 performs best with high-priority images. We allow up to 8 based on user preference.
+        // --- STRICT REFERENCE LIMITER & MERGER ---
         const MAX_IMAGES = 8;
         imageParts.sort((a, b) => b.priority - a.priority);
         const finalImageParts = imageParts.slice(0, MAX_IMAGES);
 
-        // Build final parts array
+        // Mapping from original/analyzer tag to the final 1-8 sequential index
+        const tagToFinalIndex: Record<string, string> = {};
+
         let indexInPrompt = 1;
-        for (const set of finalImageParts) {
-            // Replace the original textual ref tag with the exact sequential index for Seedream
-            if (set.part.length > 1 && set.part[1].text) {
-                set.part[1].text = set.part[1].text.replace(/\[.*?\]/, `[image ${indexInPrompt}]`);
+        for (const entry of finalImageParts) {
+            const finalTag = `image ${indexInPrompt}`;
+            tagToFinalIndex[entry.tag] = finalTag;
+
+            // Re-write the set text to use the final tag
+            if (entry.part.length > 1 && entry.part[1].text) {
+                // Replace any bracketed tag with the final sequential tag
+                entry.part[1].text = entry.part[1].text.replace(/\[.*?\]/, `[${finalTag}]`);
             }
-            parts.push(...set.part);
+            parts.push(...entry.part);
             indexInPrompt++;
         }
+
+        // --- STRICT PROMPT SANITIZATION ---
+        // We must ensure that NO reference to "image 20" or unmapped "REF_MASTER" survives in any text block.
+        const sanitize = (text: string) => {
+            if (!text) return "";
+            // Replace any mapped tags in the text
+            let sanitized = text;
+            Object.entries(tagToFinalIndex).forEach(([oldTag, newTag]) => {
+                // Handle various formats like [image X], (image X), image X
+                const escapedOld = oldTag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                sanitized = sanitized.replace(new RegExp(`\\[?${escapedOld}\\]?`, 'g'), `[${newTag}]`);
+            });
+            // Final safety: Remove any remaining [image X] where X > MAX_IMAGES
+            sanitized = sanitized.replace(/\[image ([9-9]|\d{2,})\]/g, "[reference]");
+            return sanitized;
+        };
 
         const cameraAngle = (shot.visual_breakdown.framing_composition.camera_angle || 'standard').replace(/_/g, ' ');
         const shotSize = (shot.visual_breakdown.framing_composition.shot_size || 'standard').replace(/_/g, ' ');
@@ -1012,7 +1071,7 @@ export default async function aiRoutes(server: FastifyInstance) {
 
         parts.push({
             text: `
-      DIRECTIVE: ${directiveText}
+      DIRECTIVE: ${sanitize(directiveText)}
       
       CINEMATIC SPECS:
       - CAMERA ANGLE: EXTREME ${cameraAngle.toUpperCase()}
@@ -1021,8 +1080,8 @@ export default async function aiRoutes(server: FastifyInstance) {
       - DEPTH OF FIELD: ${shot.visual_breakdown.framing_composition.depth} focus
       
       VISUAL CONTEXT:
-      - SCENE ACTION: "${shot.action_segment}"
-      - DIRECTORIAL NOTES: ${(shot.visual_breakdown.notes || []).join(' | ')}
+      - SCENE ACTION: "${sanitize(shot.action_segment)}"
+      - DIRECTORIAL NOTES: ${(shot.visual_breakdown.notes || []).map(sanitize).join(' | ')}
       - LIGHTING: ${shot.visual_breakdown.lighting.key}, ${shot.visual_breakdown.lighting.quality}. Style: ${shot.visual_breakdown.lighting.lighting_style || 'standard'}
       - ENVIRONMENT MOOD: ${shot.visual_breakdown.scene.mood}, Palette: ${shot.visual_breakdown.scene.color_palette}
       

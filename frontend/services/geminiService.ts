@@ -36,9 +36,10 @@ export const generateShotImage = async (
     projectId: string,
     sequenceId: string,
     aiModel: AIModel,
-    masterShotUrl?: string
+    masterShotUrl?: string,
+    previousShotUrl?: string
 ): Promise<string> => {
-    return await generateImageProxy(shot, size, assets, projectName, sequenceTitle, projectId, sequenceId, aiModel, masterShotUrl);
+    return await generateImageProxy(shot, size, assets, projectName, sequenceTitle, projectId, sequenceId, aiModel, masterShotUrl, previousShotUrl);
 };
 
 export const editShotImage = async (
