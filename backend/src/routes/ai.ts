@@ -114,31 +114,18 @@ export default async function aiRoutes(server: FastifyInstance) {
             ...imageConfig
         };
 
-        // FLUX FIX: Flux expects 'size' as string "WxH" and 'images' array.
-        // It does NOT accept 'width' and 'height' as separate fields like Seedream might.
-        if (modelPath.includes('flux')) {
-            if (payload.width && payload.height) {
-                payload.size = `${payload.width}*${payload.height}`;
-                delete payload.width;
-                delete payload.height;
-            }
-            // Ensure images is an array if present
-            if (payload.image_url) {
-                payload.images = [payload.image_url];
-                delete payload.image_url;
-            }
-            // Ensure loras are passed through (already in imageConfig)
-        } else {
-            // Existing logic for Seedream
-            if (modelPath.includes('edit') && payload.image_url) {
-                payload.images = [payload.image_url];
-                delete payload.image_url;
-            } else if (modelPath.includes('edit') && !payload.images) {
-                if (!imageConfig || !imageConfig.images) {
-                    console.warn("WARNING: Using an edit model endpoint for Text-to-Image generation without input images. Switching to 'sequential' model.");
-                    modelPath = 'bytedance/seedream-v5.0-lite/edit-sequential';
-                }
-            }
+        // UNIFIED SIZE FIX: Most Wavespeed models (Flux, Seedream) prefer 'size' as string "WxH".
+        // It helps strictly enforce aspect ratios when input images vary.
+        if (payload.width && payload.height) {
+            payload.size = `${payload.width}*${payload.height}`;
+            delete payload.width;
+            delete payload.height;
+        }
+
+        // Ensure images is an array if present (v5 models like images: [])
+        if (payload.image_url) {
+            payload.images = [payload.image_url];
+            delete payload.image_url;
         }
 
         // Ensure images are strictly strings (URLs or Data URIs) if provided
@@ -1128,8 +1115,8 @@ export default async function aiRoutes(server: FastifyInstance) {
                             const fluxModelPath = 'wavespeed-ai/flux-2-klein-9b/edit-lora';
                             const fluxConfig = {
                                 images: [geminiDataUri],
-                                width: 1280,
-                                height: 720,
+                                width: 2560,
+                                height: 1440,
                                 loras: [
                                     { path: "https://huggingface.co/dariushh/Klein_Style_V3/resolve/main/comic_klein_style_V1.safetensors", scale: 1.65 },
                                     { path: "dariushh/Comic_lines_style", scale: 0.8 }
@@ -1260,13 +1247,15 @@ export default async function aiRoutes(server: FastifyInstance) {
 
                         if (requestedModel === 'bytedance/seedream-v5.0-lite/edit-sequential') {
                             imageUrl = await generateImageSeedream(`${genPromptText}\nUse this image as reference.`, {
-                                image_url: (base64Data && base64Data.startsWith('http')) ? base64Data : `data:${currentMimeType};base64,${base64Data}`
+                                image_url: (base64Data && base64Data.startsWith('http')) ? base64Data : `data:${currentMimeType};base64,${base64Data}`,
+                                width: 2560,
+                                height: 1440
                             }, 'bytedance/seedream-v5.0-lite/edit-sequential');
                         } else if (requestedModel === 'flux-comic') {
                             const fluxModelPath = 'wavespeed-ai/flux-2-klein-9b/edit-lora';
                             const imageConfig = {
                                 images: [(base64Data && base64Data.startsWith('http')) ? base64Data : `data:${currentMimeType};base64,${base64Data}`],
-                                width: 1280, height: 720,
+                                width: 2560, height: 1440,
                                 loras: [
                                     { path: "https://huggingface.co/dariushh/Klein_Style_V3/resolve/main/comic_klein_style_V1.safetensors", scale: 1.65 },
                                     { path: "dariushh/Comic_lines_style", scale: 0.8 }
