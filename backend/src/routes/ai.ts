@@ -948,7 +948,7 @@ export default async function aiRoutes(server: FastifyInstance) {
                     tag: 'REF_PREVIOUS',
                     part: [
                         { inlineData: { data: prevRes.data, mimeType: prevRes.mimeType } },
-                        { text: `PREVIOUS SHOT REFERENCE [REF_PREVIOUS]: This shows the immediately preceding moment. Maintain clothing, item states, and fine character details (e.g., blood, sweat, items held) from this image.` }
+                        { text: `PREVIOUS SHOT REFERENCE [REF_PREVIOUS]: This shows the immediately preceding moment. Maintain clothing, item states, and fine character details (e.g., specific textures, equipment, items held) from this image.` }
                     ]
                 });
             }
